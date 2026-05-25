@@ -22,19 +22,12 @@ export interface SkillReferencePluginOptions {
 	bootstrapEntries?: readonly string[];
 }
 
-export interface SkillReferencePlugin extends Plugin {
-	getObservedSkillImports(): readonly string[];
-	getTrackedSkillFiles(): readonly string[];
-}
-
-export function skillReferencePlugin(options: SkillReferencePluginOptions): SkillReferencePlugin {
+export function skillReferencePlugin(options: SkillReferencePluginOptions): Plugin {
 	const projectRoot = canonicalPath(path.resolve(options.root));
 	const bootstrapEntries = new Set((options.bootstrapEntries ?? []).map((entry) => canonicalPath(path.resolve(entry))));
 	const internalModuleToken = randomUUID();
 	const internalSkillModulePrefix = `${SKILL_MODULE_PREFIX}${internalModuleToken}:`;
 	const encodedInternalSkillModulePrefix = `__x00__flue-skill:${internalModuleToken}:`;
-	const observedSkillImports = new Set<string>();
-	const trackedSkillFiles = new Set<string>();
 	const trackedSkillDirectories = new Set<string>();
 
 	return {
@@ -56,7 +49,6 @@ export function skillReferencePlugin(options: SkillReferencePluginOptions): Skil
 				assertPackagedSkillPath(authoredPath, projectRoot);
 				const resolvedPath = canonicalPath(authoredPath);
 				const skillModuleId = `${internalSkillModulePrefix}${resolvedPath}`;
-				observedSkillImports.add(resolvedPath);
 				transformed = `${transformed.slice(0, declaration.start)}${JSON.stringify(skillModuleId)}${transformed.slice(declaration.end)}`;
 			}
 			return { code: transformed, map: null };
@@ -147,7 +139,6 @@ export function skillReferencePlugin(options: SkillReferencePluginOptions): Skil
 				const relativePath = normalizePath(path.relative(directory, absolutePath));
 				const canonicalFilePath = canonicalPath(absolutePath);
 				const fileModuleId = `${canonicalFilePath}${SKILL_FILE_QUERY}`;
-				trackedSkillFiles.add(canonicalFilePath);
 				imports.push(`import file${index} from ${JSON.stringify(fileModuleId)};`);
 				entries.push(`${JSON.stringify(relativePath)}: file${index}`);
 			}
@@ -166,12 +157,6 @@ export function skillReferencePlugin(options: SkillReferencePluginOptions): Skil
 				`const reference = ${JSON.stringify(reference)};`,
 				'export default reference;',
 			].join('\n');
-		},
-		getObservedSkillImports() {
-			return [...observedSkillImports];
-		},
-		getTrackedSkillFiles() {
-			return [...trackedSkillFiles];
 		},
 	};
 }

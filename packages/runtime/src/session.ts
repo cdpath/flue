@@ -108,12 +108,7 @@ interface SessionInitOptions {
 	onDelete?: () => void;
 }
 
-// TODO: rename `RuntimeScopeOptions` → `CallOverrides` and `withScopedRuntime`
-// → `withCallOverrides`. The "scope" name is a vestige from when this also
-// built a fresh just-bash env with per-call `commands` registered. With
-// `commands` removed, this is just per-call overrides on top of agent-wide
-// defaults — the name no longer reflects what it does.
-interface RuntimeScopeOptions {
+interface CallOverrides {
 	tools: ToolDefinition[];
 	model?: string;
 	thinkingLevel?: ThinkingLevel;
@@ -1031,8 +1026,8 @@ export class Session implements FlueSession {
 		}
 	}
 
-	private async withScopedRuntime<T>(
-		options: RuntimeScopeOptions,
+	private async withCallOverrides<T>(
+		options: CallOverrides,
 		fn: (ctx: { resolvedModel: Model<any> }) => Promise<T>,
 	): Promise<T> {
 		const previousTools = this.harness.state.tools;
@@ -1708,7 +1703,7 @@ export class Session implements FlueSession {
 		persistenceError: string;
 		recoveryError: string;
 	}): Promise<PromptResponse> {
-		return this.withScopedRuntime(
+		return this.withCallOverrides(
 			{
 				tools: [],
 				model: undefined,
@@ -1778,7 +1773,7 @@ export class Session implements FlueSession {
 	> {
 		const resultBundle = args.schema ? createResultTools(args.schema) : undefined;
 
-		return this.withScopedRuntime(
+		return this.withCallOverrides(
 			{
 				tools: args.tools ?? [],
 				model: args.model,

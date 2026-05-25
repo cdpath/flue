@@ -45,8 +45,6 @@ describe('Vite skill-reference plugin', () => {
 		const directory = module.packaged()[module.review.id];
 		if (!directory) throw new Error('Packaged skill directory missing');
 
-		expect(plugin.getObservedSkillImports()).toHaveLength(1);
-		expect(plugin.getObservedSkillImports()[0]).toMatch(/\/skills\/review\/SKILL\.md$/);
 		expect(module.review).toEqual({
 			__flueSkillReference: true,
 			id: expect.stringContaining('skill:review:'),
@@ -63,7 +61,6 @@ describe('Vite skill-reference plugin', () => {
 			'scripts/inspect.py',
 		]);
 		expect(decode(directory.files['LICENSE.txt'])).toBe('License text\n');
-		expect(plugin.getTrackedSkillFiles()).toContainEqual(expect.stringMatching(/\/skills\/review\/LICENSE\.txt$/));
 	});
 
 	it('handles attributed imports in authored TypeScript modules', async () => {
@@ -111,14 +108,11 @@ describe('Vite skill-reference plugin', () => {
 			'src/entry.ts',
 			`import { review } from './profile.ts';\nimport { marker } from './helper.ts';\nimport { getPackagedSkills } from 'virtual:flue/packaged-skills';\nexport { review, marker };\nexport function packaged() { return getPackagedSkills(); }\n`,
 		);
-		const plugin = createFixturePlugin(root);
-		const built = await buildFixture(root, plugin);
-		const module = await importBuiltFixture(built);
+		const module = await importBuiltFixture(await buildFixture(root, createFixturePlugin(root)));
 
 		expect(module.marker).toBe('helper');
 		expect(module.review.name).toBe('review');
 		expect(Object.values(module.packaged())).toHaveLength(1);
-		expect(plugin.getObservedSkillImports()).toHaveLength(1);
 	});
 
 	it('derives stable package identity from project-relative skill paths', async () => {
@@ -301,12 +295,11 @@ describe('Vite skill-reference plugin', () => {
 			'src/entry.ts',
 			`import review from '../skills/review/SKILL.md' with { type: 'skill' };\nimport { getPackagedSkills } from 'virtual:flue/packaged-skills';\nexport { review };\nexport function packaged() { return getPackagedSkills(); }\n`,
 		);
-		const plugin = createFixturePlugin(root);
 		const server = await createServer({
 			configFile: false,
 			root,
 			logLevel: 'silent',
-			plugins: [plugin],
+			plugins: [createFixturePlugin(root)],
 			server: { middlewareMode: true },
 		});
 		try {
@@ -315,7 +308,6 @@ describe('Vite skill-reference plugin', () => {
 			if (!directory) throw new Error('Packaged skill directory missing');
 			expect(module.review.name).toBe('review');
 			expect(decode(directory.files['LICENSE.txt'])).toBe('License text\n');
-			expect(plugin.getTrackedSkillFiles()).toContainEqual(expect.stringMatching(/\/skills\/review\/LICENSE\.txt$/));
 		} finally {
 			await server.close();
 		}
