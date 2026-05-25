@@ -190,39 +190,6 @@ export type PromptImage = ImageContent;
 
 // ─── Skill ──────────────────────────────────────────────────────────────────
 
-export type SkillSource =
-	| { kind: 'local'; path: string }
-	| { kind: 'sandbox'; cwd: string; relativePath: string };
-
-export interface SkillResourceEntry {
-	path: string;
-}
-
-export type SkillResources =
-	| {
-			kind: 'lazy-local';
-			entries: SkillResourceEntry[];
-			contents: Record<string, string>;
-		}
-	| {
-			kind: 'lazy-sandbox';
-			cwd: string;
-			root: string;
-			entries: SkillResourceEntry[];
-		};
-
-export interface SkillDefinition {
-	name: string;
-	description: string;
-	body: string;
-	resources?: SkillResources;
-	license?: string;
-	compatibility?: string;
-	metadata?: Record<string, string>;
-	allowedTools?: string[];
-	source: SkillSource;
-}
-
 export interface SkillReference {
 	readonly __flueSkillReference: true;
 	readonly id: string;
@@ -243,7 +210,6 @@ export interface PackagedSkillDirectory {
 }
 
 export type Skill =
-	| SkillDefinition
 	| SkillReference
 	| {
 			name: string;
@@ -636,14 +602,14 @@ export interface FlueSession {
 	readonly fs: FlueFs;
 
 	skill<S extends v.GenericSchema>(
-		skill: SkillDefinition | SkillReference | string,
+		skill: SkillReference | string,
 		options: SkillOptions<S> & { result: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
 	skill<S extends v.GenericSchema>(
-		skill: SkillDefinition | SkillReference | string,
+		skill: SkillReference | string,
 		options: SkillOptions<S> & { schema: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
-	skill(skill: SkillDefinition | SkillReference | string, options?: SkillOptions): CallHandle<PromptResponse>;
+	skill(skill: SkillReference | string, options?: SkillOptions): CallHandle<PromptResponse>;
 
 	task<S extends v.GenericSchema>(
 		text: string,

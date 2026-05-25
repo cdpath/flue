@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import { type Static, Type } from '@earendil-works/pi-ai';
-import type { AgentProfile, PackagedSkillDirectory, SessionEnv, SkillDefinition } from './types.ts';
+import type { AgentProfile, PackagedSkillDirectory, SessionEnv } from './types.ts';
 
 const MAX_READ_LINES = 2000;
 const MAX_READ_BYTES = 50 * 1024;
@@ -41,13 +41,12 @@ export interface CreateToolsOptions {
 		signal?: AbortSignal,
 	) => Promise<AgentToolResult<TaskToolResultDetails>>;
 	subagents?: Record<string, AgentProfile>;
-	skills?: Record<string, SkillDefinition>;
 	packagedSkills?: Record<string, PackagedSkillDirectory>;
 }
 
 export function createTools(env: SessionEnv, options?: CreateToolsOptions): AgentTool<any>[] {
 	const tools: AgentTool<any>[] = [
-		createReadTool(env, options?.skills ?? {}, options?.packagedSkills ?? {}),
+		createReadTool(env, options?.packagedSkills ?? {}),
 		createWriteTool(env),
 		createEditTool(env),
 		createBashTool(env),
@@ -83,7 +82,6 @@ export function createPackagedSkillReadTool(
 
 function createReadTool(
 	env: SessionEnv,
-	skills: Record<string, SkillDefinition>,
 	packagedSkills: Record<string, PackagedSkillDirectory>,
 ): AgentTool<typeof ReadParams> {
 	return {
@@ -95,9 +93,9 @@ function createReadTool(
 		async execute(_toolCallId: string, params: Static<typeof ReadParams>, signal?: AbortSignal) {
 			throwIfAborted(signal);
 
-			const bundledResource = readBundledSkillResource(skills, params.path) ?? readPackagedSkillFile(packagedSkills, params.path);
-			if (bundledResource) {
-				return formatReadContent(params.path, bundledResource, params.offset, params.limit);
+			const packagedFile = readPackagedSkillFile(packagedSkills, params.path);
+			if (packagedFile) {
+				return formatReadContent(params.path, packagedFile, params.offset, params.limit);
 			}
 
 			try {
@@ -446,22 +444,6 @@ function throwIfAborted(signal?: AbortSignal): void {
 	if (signal?.aborted) throw new Error('Operation aborted');
 }
 
-function skillResourceReadPath(skillName: string, resourcePath: string): string {
-	return `/.flue/skills/${skillName}/${resourcePath}`;
-}
-
-function readBundledSkillResource(skills: Record<string, SkillDefinition>, path: string): string | undefined {
-	for (const skill of Object.values(skills)) {
-		if (skill.resources?.kind !== 'lazy-local') continue;
-		for (const entry of skill.resources.entries) {
-			if (path === skillResourceReadPath(skill.name, entry.path)) {
-				return skill.resources.contents[entry.path];
-			}
-		}
-	}
-	return undefined;
-}
-
 function readPackagedSkillFile(skills: Record<string, PackagedSkillDirectory>, path: string): string | undefined {
 	for (const skill of Object.values(skills)) {
 		for (const [filePath, file] of Object.entries(skill.files)) {
@@ -503,10 +485,6 @@ function formatReadContent(path: string, content: string, offset?: number, limit
 		content: [{ type: 'text' as const, text: output }],
 		details: { path, lines: allLines.length },
 	};
-}
-
-export function formatBundledSkillResourcePath(skillName: string, resourcePath: string): string {
-	return skillResourceReadPath(skillName, resourcePath);
 }
 
 export function formatPackagedSkillFilePath(skillId: string, filePath: string): string {

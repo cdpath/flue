@@ -34,7 +34,6 @@ import {
 	buildPackagedSkillPrompt,
 	buildPromptText,
 	buildResultFollowUpPrompt,
-	buildSkillByNamePrompt,
 	buildSkillByPathlessNamePrompt,
 	createResultTools,
 	type ResultToolBundle,
@@ -69,7 +68,6 @@ import type {
 	ShellOptions,
 	ShellResult,
 	PackagedSkillDirectory,
-	SkillDefinition,
 	SkillReference,
 	SkillOptions,
 	TaskOptions,
@@ -154,14 +152,6 @@ function resolveResultOption(
 interface InternalTaskOptions<S extends v.GenericSchema | undefined> extends TaskOptions<S> {
 	inheritedModel?: string;
 	inheritedThinkingLevel?: ThinkingLevel;
-}
-
-function getBundledSkills(skills: Record<string, AgentConfig['skills'][string]>): Record<string, SkillDefinition> {
-	const bundled: Record<string, SkillDefinition> = {};
-	for (const [name, skill] of Object.entries(skills)) {
-		if ('body' in skill && 'source' in skill) bundled[name] = skill;
-	}
-	return bundled;
 }
 
 function getRegisteredPackagedSkills(
@@ -690,15 +680,15 @@ export class Session implements FlueSession {
 	}
 
 	skill<S extends v.GenericSchema>(
-		skill: SkillDefinition | SkillReference | string,
+		skill: SkillReference | string,
 		options: SkillOptions<S> & { result: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
 	skill<S extends v.GenericSchema>(
-		skill: SkillDefinition | SkillReference | string,
+		skill: SkillReference | string,
 		options: SkillOptions<S> & { schema: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
-	skill(skill: SkillDefinition | SkillReference | string, options?: SkillOptions): CallHandle<PromptResponse>;
-	skill(skill: SkillDefinition | SkillReference | string, options?: SkillOptions<v.GenericSchema | undefined>): CallHandle<any> {
+	skill(skill: SkillReference | string, options?: SkillOptions): CallHandle<PromptResponse>;
+	skill(skill: SkillReference | string, options?: SkillOptions<v.GenericSchema | undefined>): CallHandle<any> {
 		return createCallHandle(options?.signal, (signal) =>
 			this.runOperation('skill', signal, async () => {
 				const schema = resolveResultOption(options);
@@ -708,9 +698,7 @@ export class Session implements FlueSession {
 				let activePackagedSkills: Record<string, PackagedSkillDirectory> | undefined;
 				if (typeof skill === 'string') {
 					const registered = this.config.skills[skill];
-					if (registered && 'body' in registered && 'source' in registered) {
-						promptText = buildSkillByNamePrompt(registered, options?.args, schema);
-					} else if (registered && '__flueSkillReference' in registered) {
+					if (registered && '__flueSkillReference' in registered) {
 						const packaged = this.resolvePackagedSkill(registered);
 						promptText = buildPackagedSkillPrompt(registered, packaged, options?.args, schema);
 						activePackagedSkills = { [registered.id]: packaged };
@@ -720,13 +708,10 @@ export class Session implements FlueSession {
 						this.throwMissingSkill(skill);
 					}
 					skillName = skill;
-				} else if ('__flueSkillReference' in skill) {
+				} else {
 					const packaged = this.resolvePackagedSkill(skill);
 					promptText = buildPackagedSkillPrompt(skill, packaged, options?.args, schema);
 					activePackagedSkills = { [skill.id]: packaged };
-					skillName = skill.name;
-				} else {
-					promptText = buildSkillByNamePrompt(skill, options?.args, schema);
 					skillName = skill.name;
 				}
 
@@ -926,8 +911,8 @@ export class Session implements FlueSession {
 				`inside the session's sandbox. If you expected "${skill}" to be there, make sure ` +
 				`the SKILL.md file exists at that path before calling init() — the default ` +
 				`empty sandbox starts with no files, so it has no skills unless you put them there.\n\n` +
-				`Bundled skills can be imported from SKILL.md with { type: 'skill' } and passed directly ` +
-				`to session.skill(skillValue).`,
+				`Packaged skills can be imported from SKILL.md with { type: 'skill' } and passed directly ` +
+				`to session.skill(skillReference).`,
 		);
 	}
 
@@ -1021,7 +1006,6 @@ export class Session implements FlueSession {
 
 		return createTools(env, {
 			subagents: this.config.subagents ?? {},
-			skills: getBundledSkills(this.config.skills),
 			packagedSkills,
 			task: runTask,
 		});
