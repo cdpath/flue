@@ -1,0 +1,13 @@
+{
+	"name": "example-braintrust",
+	"private": true,
+	"type": "module",
+	"dependencies": {
+		"@flue/runtime": "workspace:*",
+		"braintrust": "^3.9.0",
+		"hono": "^4.7.0"
+	},
+	"devDependencies": {
+		"@flue/cli": "workspace:*"
+	}
+}

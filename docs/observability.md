@@ -115,4 +115,4 @@ An external observability adapter can map public events as follows:
 
 `observe(...)` supplies complete Flue-level semantics. A vendor may separately provide Node-specific wrapping or provider-SDK auto-instrumentation when it wants provider-native spans to inherit an active vendor span context during execution. Those optional capabilities are not required to understand Flue execution and should not require application code to depend on `@flue/runtime/internal`.
 
-See `examples/sentry/` for a public `observe(...)` integration focused on error reporting.
+See `examples/braintrust/` for a public `observe(...)` integration that produces model-turn traces, and `examples/sentry/` for one focused on error reporting.

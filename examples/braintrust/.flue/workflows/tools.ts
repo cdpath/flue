@@ -1,0 +1,20 @@
+import { Type, createAgent, defineTool, http, type FlueContext } from '@flue/runtime';
+
+export const channels = [http()];
+
+const agent = createAgent(() => ({ model: 'anthropic/claude-haiku-4-5' }));
+
+const lookup = defineTool({
+	name: 'lookup_weather',
+	description: 'Look up current weather for a city.',
+	parameters: Type.Object({ city: Type.String() }),
+	execute: async ({ city }) => `${city}: sunny, 72 F`,
+});
+
+export async function run({ init, payload }: FlueContext) {
+	const harness = await init(agent);
+	const session = await harness.session();
+	const city = typeof payload.city === 'string' ? payload.city : 'San Francisco';
+	const response = await session.prompt(`Use the weather tool to report current weather in ${city}.`, { tools: [lookup] });
+	return { message: response.text };
+}
