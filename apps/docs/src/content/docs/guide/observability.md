@@ -64,48 +64,174 @@ On the **Node** target, module-scoped registration observes activity handled by 
 
 On the **Cloudflare** target, each isolate evaluates `app.ts` independently. An agent Durable Object therefore registers its own observer and exports its own activity. Do not rely on shared module state to aggregate telemetry across Durable Objects; export events to your external system instead.
 
-## Workflows and agents have different lifecycles
+## Lifecycle overview
 
-Correct correlation starts with understanding what Flue considers finite.
-
-A **workflow** is a bounded invocation with a persisted run history:
+Correct correlation starts with understanding what Flue considers finite. A workflow is a bounded invocation with a persisted run history. An agent instance is persistent: each direct prompt or dispatched input performs finite work in a session, but does not create a workflow run.
 
 ```text
-run_start
-  operation_start
-    agent_start
-      model turns and tools
-    agent_end
-  operation
-run_end
+workflow invocation
+  │
+  ├─► run_start { runId }
+  │
+  │   ┌── session operation (zero or more) ────────────────┐
+  │   │                                                     │
+  │   ├─► operation_start { operationId, operationKind }    │
+  │   │     ├─► agent_start                                 │
+  │   │     │     ┌── model turn (repeats) ─────────────┐   │
+  │   │     │     ├─► turn_start                       │   │
+  │   │     │     ├─► turn_request                     │   │
+  │   │     │     ├─► message and tool activity        │   │
+  │   │     │     ├─► turn_end                         │   │
+  │   │     │     └─► turn                             │   │
+  │   │     └─► agent_end                                   │
+  │   ├─► operation { operationId }                         │
+  │   └─► idle                                              │
+  │                                                         │
+  └─► run_end { runId }
+
+
+direct agent prompt
+  │
+  ├─► operation_start { instanceId, operationId, operationKind: 'prompt' }
+  ├─► agent_start ─► model turns and tools ─► agent_end
+  ├─► operation { instanceId, operationId }
+  └─► idle { instanceId }
+
+
+dispatch(...) ─► { dispatchId, acceptedAt }
+  │
+  └── asynchronously:
+      ├─► operation_start { instanceId, dispatchId, operationId, operationKind: 'prompt' }
+      ├─► agent_start ─► model turns and tools ─► agent_end
+      ├─► operation { instanceId, dispatchId, operationId }
+      └─► idle { instanceId, dispatchId }
 ```
 
-A direct or dispatched input to an **agent session** advances a persistent conversation. It is not a workflow run:
+`run_start` and `run_end` are emitted only for workflows. `idle` means that current operation processing has settled and the session is ready for more input; it is not the end of an agent instance or session.
 
-```text
-operation_start
-  agent_start
-    model turns and tools
-  agent_end
-operation
-idle
-```
+### Root lifecycle by invocation kind
 
-`idle` means that current processing has settled and the session is waiting for more input. It is not the end of the agent instance or session.
+| Invocation kind | Trace root | Opening and closing events | Persisted run history | Observation surface |
+| --- | --- | --- | --- | --- |
+| Workflow invocation | `runId` | `run_start` / `run_end` | Yes | `observe(...)`, run APIs, `flue logs`, workflow streams |
+| Direct agent prompt | `operationId`, with `instanceId` | `operation_start` / `operation`, then `idle` | No | `observe(...)` and attached HTTP/WebSocket streams |
+| Dispatched agent input | `operationId`, with `instanceId` and `dispatchId` | `operation_start` / `operation`, then `idle` | No | `observe(...)` |
+
+`dispatch(...)` returns a receipt when input is accepted for asynchronous processing; it does not return a caller-attached event stream.
 
 ### Correlation identifiers
 
 | Field | Use it for |
 | --- | --- |
-| `runId` | One finite workflow invocation. Only workflow activity has this root identity. |
-| `instanceId` | One persistent agent instance handling direct or dispatched input. |
-| `session` / `harness` | Conversation and initialized agent-environment scopes. |
-| `dispatchId` | One asynchronously accepted dispatched input. |
-| `operationId` | One finite action: `prompt`, `skill`, `task`, `shell`, or `compact`. |
-| `taskId` / `parentSession` | Correlating delegated child-agent activity. |
-| `turnId` | One model request/response cycle within an operation. |
+| `runId` | One finite workflow invocation. Workflow events correlate through this root identity. |
+| `instanceId` | One persistent agent instance handling direct or dispatched input; also present on workflow start identity. |
+| `session` / `harness` | Conversation and initialized agent-environment scopes for session-derived events. |
+| `dispatchId` | One asynchronously accepted dispatched input and the processing it triggers. |
+| `operationId` | One finite session action: `prompt`, `skill`, `task`, `shell`, or explicit `compact`. |
+| `taskId` / `parentSession` | Delegated child-agent work and its originating session. |
+| `turnId` | One normalized model request/output pair within agent or compaction work. |
+| `eventIndex` / `timestamp` | Ordering within one emitted context and event time. |
 
 Use `runId` as the root for a workflow trace. For direct or dispatched agent processing, use `operationId` as the finite trace root and retain `instanceId`, `session`, and `dispatchId` as attributes.
+
+## Event reference
+
+`FlueEvent` covers the workflow envelope, operations within sessions, model work, tools, delegated tasks, compaction, application logs, and settled processing.
+
+| Category | Events | Emitted when |
+| --- | --- | --- |
+| Workflow envelope | `run_start`, `run_end` | Workflow invocations only. |
+| Operation lifecycle | `operation_start`, `operation`, `idle` | Session operations, including direct and dispatched prompts. |
+| Agent loop | `agent_start`, `agent_end` | Model-driven prompt, skill, or delegated task processing. |
+| Ordinary turn lifecycle | `turn_start`, `turn_end` | Agent-loop model turns only. |
+| Model telemetry | `turn_request`, `turn` | Agent turns and internal compaction model calls. |
+| Message streaming | `message_start`, `message_update`, `message_end` | Message activity inside the ordinary agent loop. |
+| Streamed content | `text_delta`, `thinking_start`, `thinking_delta`, `thinking_end` | Assistant text or reasoning projections when present. |
+| Tool execution | `tool_execution_start`, `tool_execution_update`, `tool_execution_end` | Tools invoked from an agent-loop turn. |
+| Normalized tool span | `tool_start`, `tool_call` | Agent-loop tools and `session.shell(...)`. |
+| Delegated task span | `task_start`, `task` | Child-agent work performed through `session.task(...)` or the task tool. |
+| Compaction span | `compaction_start`, `compaction` | Context compaction when compaction work is performed. |
+| Diagnostics | `log` | Application-authored logs and runtime diagnostic logs. |
+
+### Operations
+
+Every session operation has a finite boundary:
+
+```text
+operation_start { operationKind }
+  operation-specific events
+operation { isError, durationMs, result?, usage?, error? }
+idle
+```
+
+| Operation kind | Trigger | Typical nested activity |
+| --- | --- | --- |
+| `prompt` | `session.prompt(...)`, direct agent input, dispatched input | Agent turns, tools, tasks, automatic compaction. |
+| `skill` | `session.skill(...)` | Agent turns, tools, tasks, automatic compaction. |
+| `task` | `session.task(...)` | `task_start`, child-session operations, `task`. |
+| `shell` | `session.shell(...)` | Normalized bash `tool_start` / `tool_call`, without model turns. |
+| `compact` | Explicit `session.compact()` | Compaction work, when the session has content to compact. |
+
+Automatic threshold or overflow compaction remains nested within its current prompt or skill operation. Only explicit `session.compact()` creates an operation with `operationKind: 'compact'`.
+
+### Model turns
+
+One prompt operation can perform several ordinary model turns, especially when the model invokes tools:
+
+```text
+turn_start { purpose: 'agent', turnId }
+turn_request { purpose: 'agent', turnId }
+  message_start
+  message_update ─► text_delta / thinking_* events
+  message_end
+  tool activity, when requested
+turn_end { purpose: 'agent', turnId }
+turn { purpose: 'agent', turnId, usage, durationMs, isError }
+```
+
+`turn_request` exposes normalized model-visible input. `turn` exposes normalized output, duration, usage and cost, stop reason, and failure state. Use their shared `turnId` to create one model-generation trace span.
+
+### Tool events
+
+Flue exposes raw agent-loop tool progress and normalized completed tool spans:
+
+| Event family | Use it for | Model-invoked tools | `session.shell(...)` |
+| --- | --- | ---: | ---: |
+| `tool_execution_start` / `tool_execution_update` / `tool_execution_end` | Incremental tool execution activity. | Yes | No |
+| `tool_start` / `tool_call` | Duration, result, and error span mapping. | Yes | Yes |
+
+When an agent invokes several tools concurrently, execution-update and terminal events may interleave. Match tool activity by tool-call identity rather than assuming sequential ordering.
+
+### Delegated tasks
+
+A task creates child-session activity inside the parent task operation:
+
+```text
+operation_start { operationKind: 'task' }
+  task_start { taskId, parentSession }
+    operation_start { operationKind: 'prompt', taskId, parentSession }
+      agent_start ─► model turns and tools ─► agent_end
+    operation
+    idle
+  task { taskId, parentSession }
+operation
+idle
+```
+
+Use `taskId` and `parentSession` to nest delegated work beneath the parent operation while retaining the surrounding workflow or persistent-agent trace root.
+
+### Compaction
+
+Context compaction has its own span and can make internal model calls:
+
+```text
+compaction_start { reason }
+  turn_request { purpose: 'compaction' | 'compaction_prefix', turnId }
+  turn { purpose: 'compaction' | 'compaction_prefix', turnId }
+compaction
+```
+
+Compaction model calls emit `turn_request` and `turn`, but do not emit ordinary agent-loop `turn_start`, `turn_end`, message-stream, or tool-execution events. Automatic compaction is nested within the active operation; explicit `session.compact()` wraps it in a `compact` operation. An explicit compact call with nothing to summarize may complete without emitting `compaction_start` or `compaction`.
 
 ## Add application logs
 
