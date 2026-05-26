@@ -568,7 +568,7 @@ export interface FlueSessions {
 // ─── Flue Session ───────────────────────────────────────────────────────────
 
 /**
- * Awaitable handle returned by `prompt()`, `skill()`, `task()`, and `shell()`.
+ * Awaitable handle returned by `prompt()`, `skill()`, `task()`, `delegate()`, and `shell()`.
  * Aborting rejects the awaited value with an `AbortError` (a `DOMException`)
  * whose `cause` is the signal's `reason`. Pass `options.signal` to merge an
  * external `AbortSignal` (e.g. `AbortSignal.timeout(ms)`) with the handle's.
@@ -631,7 +631,7 @@ export interface FlueSession {
 	 * UIs without waiting for the window to fill.
 	 *
 	 * Resolves successfully (no-op) when there is nothing to compact.
-	 * Throws if another operation (`prompt` / `skill` / `task` / `shell`)
+	 * Throws if another operation (`prompt` / `skill` / `task` / `delegate` / `shell`)
 	 * is in flight on this session — start a separate session for parallel
 	 * branches.
 	 *
@@ -1009,8 +1009,8 @@ export type FlueEvent = (
 		}
 	| { type: 'task_start'; taskId: string; prompt: string; agent?: string; cwd?: string }
 	| { type: 'task'; taskId: string; agent?: string; isError: boolean; result?: any; durationMs: number }
-	| { type: 'delegation_start'; delegationId: string; targetInstanceId: string; prompt: string }
-	| { type: 'delegation'; delegationId: string; targetInstanceId: string; isError: boolean; result?: any; durationMs: number }
+	| { type: 'delegation_start'; delegationId: string; targetAgent: string; targetInstanceId: string; prompt: string }
+	| { type: 'delegation'; delegationId: string; targetAgent: string; targetInstanceId: string; isError: boolean; result?: any; durationMs: number }
 	| {
 			type: 'compaction_start';
 			reason: 'threshold' | 'overflow' | 'manual';

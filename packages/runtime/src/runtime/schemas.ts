@@ -243,12 +243,14 @@ const FlueEventSchema = v.union([
 	flueEvent({
 		type: v.literal('delegation_start'),
 		delegationId: v.string(),
+		targetAgent: v.string(),
 		targetInstanceId: v.string(),
 		prompt: v.string(),
 	}),
 	flueEvent({
 		type: v.literal('delegation'),
 		delegationId: v.string(),
+		targetAgent: v.string(),
 		targetInstanceId: v.string(),
 		isError: v.boolean(),
 		result: v.optional(v.unknown()),

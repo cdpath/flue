@@ -28,16 +28,17 @@ describe('Node build plugin', () => {
 		expect(entry).toContain('const websocketWorkflowHandlers = {};');
 		expect(entry).toContain('const agentRouteMiddleware = {};');
 		expect(entry).toContain('const workflowWebSocketMiddleware = {};');
-		expect(entry).toContain('const dispatchAgentNames = new Map();');
-		expect(entry).toContain('dispatchAgentNames.set(mod.default, name);');
-		expect(entry).toContain('resolveDispatchAgentName: (agent) => dispatchAgentNames.get(agent),');
+		expect(entry).toContain('const deployedAgentNames = new Map();');
+		expect(entry).toContain('deployedAgentNames.set(mod.default, name);');
+		expect(entry).toContain('resolveDispatchAgentName: (agent) => deployedAgentNames.get(agent),');
 		expect(entry).toContain('invokeAgentDelegation,');
-		expect(entry).toContain('async function invokeDeployedAgentDelegation(agent, input, signal)');
-		expect(entry).toContain('const agentName = dispatchAgentNames.get(agent);');
-		expect(entry).toContain('delegate() target created agent is not a discovered default-exported agent in this built application.');
+		expect(entry).toContain('function resolveDeployedAgentDelegation(agent)');
+		expect(entry).toContain('const targetAgent = deployedAgentNames.get(agent);');
+		expect(entry).toContain('invoke: (input, signal) => invokeAgentDelegation({');
+		expect(entry).toContain('agentName: targetAgent,');
 		expect(entry).toContain('function createContextForRequest(id, runId, payload, req, initialEventIndex, dispatchId, delegationId)');
 		expect(entry).toContain('delegationId,');
-		expect(entry).toContain('invokeAgentDelegation: invokeDeployedAgentDelegation,');
+		expect(entry).toContain('resolveAgentDelegation: resolveDeployedAgentDelegation,');
 		expect(entry).toContain('const channelModules = {');
 		expect(entry).toContain('const normalized = normalizeBuiltModules(agentModules, workflowModules, channelModules);');
 		expect(entry).toContain('channelApps,');
@@ -502,6 +503,35 @@ describe('Node build plugin', () => {
 			child.send?.({ version: 1, type: 'invoke', requestId: 'req-delegation' });
 			const terminal = await waitForChildMessage(child, (message) => message.type === 'result' || message.type === 'error');
 			expect(terminal).toMatchObject({ type: 'result', result: { text: 'review complete', model: 'reviewer' } });
+		} finally {
+			if (child.exitCode === null) child.kill('SIGTERM');
+		}
+	}, 15000);
+
+	it('preserves target delegation errors through the built Node artifact', async () => {
+		const root = createFixtureRoot('flue-local-ipc-delegation-error-');
+		fs.mkdirSync(path.join(root, 'agents'));
+		fs.mkdirSync(path.join(root, 'workflows'));
+		fs.writeFileSync(
+			path.join(root, 'agents', 'reviewer.ts'),
+			`import { createAgent } from '@flue/runtime';\n` +
+				`export default createAgent(() => ({ model: false }));\n`,
+		);
+		fs.writeFileSync(
+			path.join(root, 'workflows', 'orchestrate.ts'),
+			`import { createAgent } from '@flue/runtime';\n` +
+				`import reviewer from '../agents/reviewer.ts';\n` +
+				`const orchestrator = createAgent(() => ({ model: false }));\n` +
+				`export async function run(ctx) { const harness = await ctx.init(orchestrator); const session = await harness.session(); try { await session.delegate('Review this.', { agent: reviewer, id: 'review-instance' }); return { error: 'missing failure' }; } catch (error) { return { error: error instanceof Error ? error.message : String(error) }; } }\n`,
+		);
+		await build({ root, target: 'node' });
+
+		const child = startGeneratedIpcChild(root, { FLUE_CLI_TARGET: 'workflow', FLUE_CLI_NAME: 'orchestrate' });
+		try {
+			await waitForChildMessage(child, (message) => message.type === 'ready');
+			child.send?.({ version: 1, type: 'invoke', requestId: 'req-delegation-error' });
+			const terminal = await waitForChildMessage(child, (message) => message.type === 'result' || message.type === 'error');
+			expect(terminal).toMatchObject({ type: 'result', result: { error: expect.stringContaining('No model configured') } });
 		} finally {
 			if (child.exitCode === null) child.kill('SIGTERM');
 		}

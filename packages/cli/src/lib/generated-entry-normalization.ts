@@ -5,7 +5,7 @@ function normalizeBuiltModules(agentModules, workflowModules, channelModules) {
   const directHandlers = {};
   const localAgentHandlers = {};
   const createdAgents = {};
-  const dispatchAgentNames = new Map();
+  const deployedAgentNames = new Map();
   const workflowHandlers = {};
   const localWorkflowHandlers = {};
   const websocketAgentHandlers = {};
@@ -25,9 +25,9 @@ function normalizeBuiltModules(agentModules, workflowModules, channelModules) {
     assertDirectChannels(channels, 'agent "' + name + '"');
     manifest.agents.push({ name, channels, created: true });
     createdAgents[name] = mod.default;
-    const previousDispatchName = dispatchAgentNames.get(mod.default);
-    if (previousDispatchName !== undefined) throw new Error('[flue] Agents "' + previousDispatchName + '" and "' + name + '" default-export the same created agent value. Use distinct createAgent(...) values for dispatchable agent modules.');
-    dispatchAgentNames.set(mod.default, name);
+    const previousDeployedName = deployedAgentNames.get(mod.default);
+    if (previousDeployedName !== undefined) throw new Error('[flue] Agents "' + previousDeployedName + '" and "' + name + '" default-export the same created agent value. Use distinct createAgent(...) values for deployed agent modules.');
+    deployedAgentNames.set(mod.default, name);
     localAgentHandlers[name] = createDirectAgentHandler(mod.default);
     if (channels.http) directHandlers[name] = localAgentHandlers[name];
     if (channels.websocket) websocketAgentHandlers[name] = localAgentHandlers[name];
@@ -61,7 +61,7 @@ function normalizeBuiltModules(agentModules, workflowModules, channelModules) {
     }
   }
 
-  return { manifest, directHandlers, localAgentHandlers, createdAgents, dispatchAgentNames, workflowHandlers, localWorkflowHandlers, websocketAgentHandlers, websocketWorkflowHandlers, agentRouteMiddleware, agentWebSocketMiddleware, workflowRouteMiddleware, workflowWebSocketMiddleware, channelApps };
+  return { manifest, directHandlers, localAgentHandlers, createdAgents, deployedAgentNames, workflowHandlers, localWorkflowHandlers, websocketAgentHandlers, websocketWorkflowHandlers, agentRouteMiddleware, agentWebSocketMiddleware, workflowRouteMiddleware, workflowWebSocketMiddleware, channelApps };
 }
 
 function normalizeChannelList(value, label) {

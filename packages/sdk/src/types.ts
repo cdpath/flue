@@ -55,7 +55,7 @@ interface PromptUsage {
 	};
 }
 
-type OperationKind = 'prompt' | 'skill' | 'task' | 'shell' | 'compact';
+type OperationKind = 'prompt' | 'skill' | 'task' | 'delegate' | 'shell' | 'compact';
 
 export type LlmTextContent = {
 	type: 'text';
@@ -248,6 +248,8 @@ export type FlueEvent = (
 	| { type: 'turn'; turnId: string; purpose: LlmTurnPurpose; durationMs: number; model?: string; provider?: string; api?: string; output?: LlmAssistantMessage; usage?: PromptUsage; stopReason?: string; isError: boolean; error?: unknown }
 	| { type: 'task_start'; taskId: string; prompt: string; agent?: string; cwd?: string }
 	| { type: 'task'; taskId: string; agent?: string; isError: boolean; result?: unknown; durationMs: number }
+	| { type: 'delegation_start'; delegationId: string; targetAgent: string; targetInstanceId: string; prompt: string }
+	| { type: 'delegation'; delegationId: string; targetAgent: string; targetInstanceId: string; isError: boolean; result?: unknown; durationMs: number }
 	| { type: 'compaction_start'; reason: 'threshold' | 'overflow' | 'manual'; estimatedTokens: number }
 	| { type: 'compaction'; messagesBefore: number; messagesAfter: number; durationMs: number; usage?: PromptUsage }
 	| { type: 'operation_start'; operationId: string; operationKind: OperationKind }
@@ -259,6 +261,7 @@ export type FlueEvent = (
 	runId?: string;
 	instanceId?: string;
 	dispatchId?: string;
+	delegationId?: string;
 	eventIndex?: number;
 	timestamp?: string;
 	session?: string;

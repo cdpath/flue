@@ -108,6 +108,27 @@ describe('WebSocket clients', () => {
 		]);
 	});
 
+	it('streams delegated lifecycle events on agent sockets', async () => {
+		const { client, sockets } = socketClient();
+		const agent = client.agents.connect('assistant', 'inst-1');
+		const socket = sockets[0]?.socket;
+		socket?.message({ version: 1, type: 'ready', target: 'agent', name: 'assistant', instanceId: 'inst-1' });
+		const events: unknown[] = [];
+		agent.onEvent((event) => events.push(event));
+		const pending = agent.prompt('delegate');
+		await Promise.resolve();
+		const request = JSON.parse(socket?.sent[0] ?? '{}') as { requestId: string };
+		socket?.message({ version: 1, type: 'event', requestId: request.requestId, event: { type: 'delegation_start', instanceId: 'inst-1', delegationId: 'delegation-1', targetAgent: 'reviewer', targetInstanceId: 'review-1', prompt: 'Review.' } });
+		socket?.message({ version: 1, type: 'event', requestId: request.requestId, event: { type: 'delegation', instanceId: 'inst-1', delegationId: 'delegation-1', targetAgent: 'reviewer', targetInstanceId: 'review-1', isError: false, result: 'ok', durationMs: 1 } });
+		socket?.message({ version: 1, type: 'result', requestId: request.requestId, result: 'done' });
+
+		await expect(pending).resolves.toEqual({ result: 'done' });
+		expect(events).toEqual([
+			{ type: 'delegation_start', instanceId: 'inst-1', delegationId: 'delegation-1', targetAgent: 'reviewer', targetInstanceId: 'review-1', prompt: 'Review.' },
+			{ type: 'delegation', instanceId: 'inst-1', delegationId: 'delegation-1', targetAgent: 'reviewer', targetInstanceId: 'review-1', isError: false, result: 'ok', durationMs: 1 },
+		]);
+	});
+
 	it('supports sequential agent prompts and ping on one socket', async () => {
 		const { client, sockets } = socketClient();
 		const agent = client.agents.connect('assistant', 'inst-1');

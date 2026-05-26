@@ -262,7 +262,7 @@ const channelModules = {
 ${channelModuleEntries}
 };
 const normalized = normalizeBuiltModules(agentModules, workflowModules, channelModules);
-const { manifest, directHandlers, createdAgents, dispatchAgentNames, websocketAgentHandlers, workflowHandlers, websocketWorkflowHandlers, agentRouteMiddleware, agentWebSocketMiddleware, workflowRouteMiddleware, workflowWebSocketMiddleware, channelApps } = normalized;
+const { manifest, directHandlers, createdAgents, deployedAgentNames, websocketAgentHandlers, workflowHandlers, websocketWorkflowHandlers, agentRouteMiddleware, agentWebSocketMiddleware, workflowRouteMiddleware, workflowWebSocketMiddleware, channelApps } = normalized;
 const agentClassNames = {
 ${agentClassMapEntries}
 };
@@ -342,22 +342,31 @@ const dispatchQueue = {
   },
 };
 
-async function invokeDeployedAgentDelegation(agent, input, signal) {
-  const agentName = dispatchAgentNames.get(agent);
-  if (!agentName) {
-    throw new Error('[flue] delegate() target created agent is not a discovered default-exported agent in this built application.');
-  }
-  const binding = env?.[agentBindingNameFromAgentName(agentName)];
-  if (!binding) throw new Error('[flue] delegate() target agent "' + agentName + '" Durable Object binding is unavailable.');
-  const stub = await getAgentByName(binding, input.id);
-  const response = await stub.fetch(new Request('https://flue.invalid' + INTERNAL_DELEGATION_PATH, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ targetAgent: agentName, input }),
-    signal,
-  }));
-  if (!response.ok) throw new Error('[flue] delegate() target agent "' + agentName + '" invocation failed with status ' + response.status + '.');
-  return response.json();
+function resolveDeployedAgentDelegation(agent) {
+  const targetAgent = deployedAgentNames.get(agent);
+  if (!targetAgent) return undefined;
+  return {
+    targetAgent,
+    async invoke(input, signal) {
+      const binding = env?.[agentBindingNameFromAgentName(targetAgent)];
+      if (!binding) throw new Error('[flue] delegate() target agent "' + targetAgent + '" Durable Object binding is unavailable.');
+      const stub = await getAgentByName(binding, input.id);
+      const response = await stub.fetch(new Request('https://flue.invalid' + INTERNAL_DELEGATION_PATH, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+        signal,
+      }));
+      const body = await response.json().catch(() => null);
+      if (!response.ok || body?.ok !== true) {
+        const serialized = body?.error;
+        const error = new Error(typeof serialized?.message === 'string' ? serialized.message : '[flue] delegate() target agent "' + targetAgent + '" invocation failed with status ' + response.status + '.');
+        if (typeof serialized?.name === 'string') error.name = serialized.name;
+        throw error;
+      }
+      return body.result;
+    },
+  };
 }
 
 // Module-scoped per-isolate registry; run ids isolate buckets across DOs.
@@ -409,7 +418,7 @@ function createContextForRequest(id, runId, payload, doInstance, req, initialEve
     createDefaultEnv,
     defaultStore,
     resolveSandbox,
-    invokeAgentDelegation: invokeDeployedAgentDelegation,
+    resolveAgentDelegation: resolveDeployedAgentDelegation,
   });
 }
 
@@ -642,20 +651,24 @@ async function dispatchAgent(request, doInstance, agentName, handler) {
     return Response.json({ dispatchId: input.dispatchId, acceptedAt: input.acceptedAt });
   }
   if (isInternalDelegationRequest(request)) {
-    const body = await request.json();
-    const input = body?.input;
-    if (body?.targetAgent !== agentName || input?.id !== id) return new Response('Invalid internal delegation target.', { status: 400 });
+    const input = await request.json();
+    if (input?.targetAgent !== agentName || input?.id !== id) return Response.json({ ok: false, error: { name: 'Error', message: 'Invalid internal delegation target.' } }, { status: 400 });
     const agent = createdAgents[agentName];
-    if (!agent) return new Response('Delegation target unavailable.', { status: 404 });
+    if (!agent) return Response.json({ ok: false, error: { name: 'Error', message: 'Delegation target unavailable.' } }, { status: 404 });
     const identity = agentRuntimeIdentity(agentName);
-    const result = await runWithInstanceContext(doInstance, identity, () => invokeAgentDelegation({
-      agentName,
-      agent,
-      input,
-      signal: request.signal,
-      createContext: (id_, runId, payload, req, initialEventIndex, dispatchId, delegationId) => createContextForRequest(id_, runId, payload, doInstance, req, initialEventIndex, dispatchId, delegationId),
-    }));
-    return Response.json(result);
+    try {
+      assertAgentsDurabilityApi(doInstance, 'keepAliveWhile');
+      const result = await runWithInstanceContext(doInstance, identity, () => doInstance.keepAliveWhile(() => invokeAgentDelegation({
+        agentName,
+        agent,
+        input,
+        signal: request.signal,
+        createContext: (id_, runId, payload, req, initialEventIndex, dispatchId, delegationId) => createContextForRequest(id_, runId, payload, doInstance, req, initialEventIndex, dispatchId, delegationId),
+      })));
+      return Response.json({ ok: true, result });
+    } catch (error) {
+      return Response.json({ ok: false, error: { name: error instanceof Error ? error.name : 'Error', message: error instanceof Error ? error.message : String(error) } }, { status: 500 });
+    }
   }
   const payload = await request.clone().json().catch(() => null);
   const session = typeof payload?.session === 'string' && payload.session.trim() !== '' ? payload.session : 'default';
@@ -834,7 +847,7 @@ configureFlueRuntime({
   manifest,
   handlers: directHandlers,
   dispatchQueue,
-  resolveDispatchAgentName: (agent) => dispatchAgentNames.get(agent),
+  resolveDispatchAgentName: (agent) => deployedAgentNames.get(agent),
   workflowHandlers,
   agentRouteMiddleware,
   agentWebSocketMiddleware,

@@ -39,8 +39,8 @@ describe('rich model-turn event schemas', () => {
 		const result = v.safeParse(RunEventListResponseSchema, {
 			events: [
 				{ type: 'operation_start', operationId: 'op_1', operationKind: 'delegate' },
-				{ type: 'delegation_start', delegationId: 'delegation_1', targetInstanceId: 'reviewer', prompt: 'Review.' },
-				{ type: 'delegation', delegationId: 'delegation_1', targetInstanceId: 'reviewer', isError: false, result: 'ok', durationMs: 1 },
+				{ type: 'delegation_start', delegationId: 'delegation_1', targetAgent: 'reviewer', targetInstanceId: 'reviewer', prompt: 'Review.' },
+				{ type: 'delegation', delegationId: 'delegation_1', targetAgent: 'reviewer', targetInstanceId: 'reviewer', isError: false, result: 'ok', durationMs: 1 },
 				{ type: 'operation', operationId: 'op_1', operationKind: 'delegate', durationMs: 1, isError: false },
 			],
 		});

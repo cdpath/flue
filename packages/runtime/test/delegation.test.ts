@@ -46,32 +46,35 @@ describe('agent delegation', () => {
 				agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: () => undefined },
 				createDefaultEnv: async () => createEnv(),
 				defaultStore: new InMemorySessionStore(),
-				invokeAgentDelegation: async (agent, input, signal) => {
-					delegatedInput = input;
-					return invokeAgentDelegation({
-						agentName: 'reviewer',
-						agent,
-						input,
-						signal,
-						createContext: (id, runId, payload, req, initialEventIndex, dispatchId, delegationId) => {
-							const ctx = createFlueContext({
-								id,
-								runId,
-								dispatchId,
-								delegationId,
-								payload,
-								env: {},
-								req,
-								initialEventIndex,
-								agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: (model) => model === modelString ? registration.getModel(modelId) : undefined },
-								createDefaultEnv: async () => createEnv(),
-								defaultStore: targetStore,
-							});
-							ctx.subscribeEvent((event) => { targetEvents.push(event); });
-							return ctx;
-						},
-					});
-				},
+				resolveAgentDelegation: (agent) => agent === target ? ({
+					targetAgent: 'reviewer',
+					invoke: async (input, signal) => {
+						delegatedInput = input;
+						return invokeAgentDelegation({
+							agentName: 'reviewer',
+							agent,
+							input,
+							signal,
+							createContext: (id, runId, payload, req, initialEventIndex, dispatchId, delegationId) => {
+								const ctx = createFlueContext({
+									id,
+									runId,
+									dispatchId,
+									delegationId,
+									payload,
+									env: {},
+									req,
+									initialEventIndex,
+									agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: (model) => model === modelString ? registration.getModel(modelId) : undefined },
+									createDefaultEnv: async () => createEnv(),
+									defaultStore: targetStore,
+								});
+								ctx.subscribeEvent((event) => { targetEvents.push(event); });
+								return ctx;
+							},
+						});
+					},
+				}) : undefined,
 			});
 			parentCtx.subscribeEvent((event) => { parentEvents.push(event); });
 			const parent = await (await parentCtx.init(createAgent(() => ({ model: false })))).session();
@@ -80,21 +83,26 @@ describe('agent delegation', () => {
 
 			expect(result.text).toBe('review complete');
 			expect(delegatedInput).toMatchObject({
+				targetAgent: 'reviewer',
 				id: 'review-instance',
 				message: 'Review this change.',
 			});
+
 			expect(delegatedInput?.delegationId).toEqual(expect.any(String));
 			expect(delegatedInput?.session).toBe(`delegation:${delegatedInput?.delegationId}`);
 			expect(parentEvents.find((event) => event.type === 'delegation_start')).toMatchObject({
 				delegationId: delegatedInput?.delegationId,
+				targetAgent: 'reviewer',
 				targetInstanceId: 'review-instance',
 				prompt: 'Review this change.',
 			});
 			expect(parentEvents.find((event) => event.type === 'delegation')).toMatchObject({
 				delegationId: delegatedInput?.delegationId,
+				targetAgent: 'reviewer',
 				isError: false,
 				result: 'review complete',
 			});
+
 			expect(parentEvents.find((event) => event.type === 'operation_start')).toMatchObject({ operationKind: 'delegate' });
 			expect(parentEvents.find((event) => event.type === 'operation')).toMatchObject({ operationKind: 'delegate', isError: false });
 			expect(parentEvents.every((event) => event.runId === undefined)).toBe(true);
@@ -132,16 +140,22 @@ describe('agent delegation', () => {
 			agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: () => undefined },
 			createDefaultEnv: async () => createEnv(),
 			defaultStore: new InMemorySessionStore(),
-			invokeAgentDelegation: async () => ({ text: '', usage: {} as never, model: { id: 'test' } } satisfies PromptResponse),
+			resolveAgentDelegation: (agent) => agent === target ? ({
+				targetAgent: 'reviewer',
+				invoke: async () => ({ text: '', usage: {} as never, model: { id: 'test' } } satisfies PromptResponse),
+			}) : undefined,
 		});
 		const withInvoker = await (await withInvokerCtx.init(createAgent(() => ({ model: false })))).session();
 		await expect(withInvoker.delegate('Review.', { agent: target, id: '' })).rejects.toThrow('non-empty "id"');
+		await expect(withInvoker.delegate('Review.', undefined as never)).rejects.toThrow('requires an agent created with createAgent');
+		await expect(withInvoker.delegate('Review.', { agent: createAgent(() => ({ model: false })), id: 'unknown' })).rejects.toThrow('not a discovered default-exported agent');
 	});
 
 	it('releases delegated target locks when target context creation fails', async () => {
 		const agent = createAgent(() => ({ model: false }));
 		const input = {
 			delegationId: 'delegation-lock',
+			targetAgent: 'reviewer',
 			id: 'review-instance',
 			session: 'delegation:lock',
 			message: 'Review.',
@@ -166,6 +180,7 @@ describe('agent delegation', () => {
 		}));
 		const input = {
 			delegationId: 'delegation-construction-failure',
+			targetAgent: 'reviewer',
 			id: 'review-instance',
 			session: 'delegation:construction-failure',
 			message: 'Review.',
@@ -200,12 +215,15 @@ describe('agent delegation', () => {
 			agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: () => undefined },
 			createDefaultEnv: async () => createEnv(),
 			defaultStore: new InMemorySessionStore(),
-			invokeAgentDelegation: async (_agent, _input, signal) => {
-				delegatedSignal = signal;
-				return new Promise((_resolve, reject) => {
-					signal?.addEventListener('abort', () => reject(new Error('target aborted')), { once: true });
-				});
-			},
+			resolveAgentDelegation: () => ({
+				targetAgent: 'target',
+				invoke: async (_input, signal) => {
+					delegatedSignal = signal;
+					return new Promise((_resolve, reject) => {
+						signal?.addEventListener('abort', () => reject(new Error('target aborted')), { once: true });
+					});
+				},
+			}),
 		});
 		const session = await (await ctx.init(createAgent(() => ({ model: false })))).session();
 		const handle = session.delegate('Wait.', { agent: createAgent(() => ({ model: false })), id: 'target' });

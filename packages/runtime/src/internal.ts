@@ -27,7 +27,7 @@ export { createDurableRunStore } from './cloudflare/run-store.ts';
 export { InMemoryRunRegistry } from './node/run-registry.ts';
 export { InMemoryRunStore } from './node/run-store.ts';
 export type { DispatchReceipt } from './types.ts';
-export type { AgentDelegationInput, InvokeAgentDelegation } from './session.ts';
+export type { AgentDelegationCapability, AgentDelegationInput, ResolveAgentDelegation } from './session.ts';
 export type { AttachedChannel, FlueRuntime } from './runtime/flue-app.ts';
 export {
 	configureFlueRuntime,

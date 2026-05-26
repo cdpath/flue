@@ -158,17 +158,19 @@ export type CreateTaskSession = (options: CreateTaskSessionOptions) => Promise<S
 
 export interface AgentDelegationInput {
 	delegationId: string;
+	targetAgent: string;
 	id: string;
 	session: string;
 	message: string;
 	requestedAt: string;
 }
 
-export type InvokeAgentDelegation = (
-	agent: CreatedAgent,
-	input: AgentDelegationInput,
-	signal?: AbortSignal,
-) => Promise<PromptResponse>;
+export interface AgentDelegationCapability {
+	targetAgent: string;
+	invoke(input: AgentDelegationInput, signal?: AbortSignal): Promise<PromptResponse>;
+}
+
+export type ResolveAgentDelegation = (agent: CreatedAgent) => AgentDelegationCapability | undefined;
 
 type OperationKind = 'prompt' | 'skill' | 'task' | 'delegate' | 'shell' | 'compact';
 
@@ -185,7 +187,7 @@ interface SessionInitOptions {
 	toolFactory?: SessionToolFactory;
 	taskDepth?: number;
 	createTaskSession?: CreateTaskSession;
-	invokeAgentDelegation?: InvokeAgentDelegation;
+	resolveAgentDelegation?: ResolveAgentDelegation;
 	onDelete?: () => void;
 }
 
@@ -566,7 +568,7 @@ export class Session implements FlueSession {
 	private activeTasks = new Set<Session>();
 	private taskDepth: number;
 	private createTaskSession: CreateTaskSession | undefined;
-	private invokeAgentDelegation: InvokeAgentDelegation | undefined;
+	private resolveAgentDelegation: ResolveAgentDelegation | undefined;
 	private onDelete: (() => void) | undefined;
 
 	private emitTurnRequestAndStream: StreamFn = (model, context, options) => {
@@ -617,7 +619,7 @@ export class Session implements FlueSession {
 		this.toolFactory = options.toolFactory;
 		this.taskDepth = options.taskDepth ?? 0;
 		this.createTaskSession = options.createTaskSession;
-		this.invokeAgentDelegation = options.invokeAgentDelegation;
+		this.resolveAgentDelegation = options.resolveAgentDelegation;
 		this.onDelete = options.onDelete;
 
 		this.metadata = options.existingData?.metadata ?? {};
@@ -1220,7 +1222,7 @@ export class Session implements FlueSession {
 		inheritedThinkingLevel: ThinkingLevel | undefined,
 		signal?: AbortSignal,
 	): Promise<AgentToolResult<TaskToolResultDetails>> {
-		const result = await this.runTask(
+		const result = await this.executeTask(
 			params.prompt,
 			{
 				agent: params.agent,
@@ -1260,7 +1262,7 @@ export class Session implements FlueSession {
 			const startedAt = Date.now();
 			this.emit({ type: 'operation_start', operationId, operationKind: 'task' });
 			try {
-				const result = await this.runTaskExclusive(text, options, signal);
+				const result = await this.executeTask(text, options, signal);
 				this.emit({
 					type: 'operation',
 					operationId,
@@ -1289,7 +1291,7 @@ export class Session implements FlueSession {
 		});
 	}
 
-	private async runTaskExclusive<S extends v.GenericSchema | undefined>(
+	private async executeTask<S extends v.GenericSchema | undefined>(
 		text: string,
 		options: InternalTaskOptions<S> | undefined,
 		signal: AbortSignal | undefined,
@@ -1400,28 +1402,35 @@ export class Session implements FlueSession {
 		options: DelegateOptions,
 		signal: AbortSignal | undefined,
 	): Promise<PromptResponse> {
-		if (!this.invokeAgentDelegation) {
+		if (!this.resolveAgentDelegation) {
 			throw new Error('[flue] This session cannot delegate to deployed agents.');
 		}
-		if (!options.agent || options.agent.__flueCreatedAgent !== true || typeof options.agent.initialize !== 'function') {
+		if (!options || typeof options !== 'object' || !options.agent || options.agent.__flueCreatedAgent !== true || typeof options.agent.initialize !== 'function') {
 			throw new Error('[flue] delegate() requires an agent created with createAgent(...).');
 		}
 		if (typeof options.id !== 'string' || options.id.trim() === '') {
 			throw new Error('[flue] delegate() requires a non-empty "id" target agent instance id.');
 		}
+		const capability = this.resolveAgentDelegation(options.agent);
+		if (!capability) {
+			throw new Error('[flue] delegate() target created agent is not a discovered default-exported agent in this built application.');
+		}
+		const { targetAgent } = capability;
 		if (signal?.aborted) throw abortErrorFor(signal);
 
 		const delegationId = crypto.randomUUID();
 		const startedAt = Date.now();
 		const target = {
 			delegationId,
+			targetAgent,
 			targetInstanceId: options.id,
 			prompt: text,
 		};
 		this.emit({ type: 'delegation_start', ...target });
 		try {
-			const result = await this.invokeAgentDelegation(options.agent, {
+			const result = await capability.invoke({
 				delegationId,
+				targetAgent,
 				id: options.id,
 				session: `delegation:${delegationId}`,
 				message: text,
@@ -1430,6 +1439,7 @@ export class Session implements FlueSession {
 			this.emit({
 				type: 'delegation',
 				delegationId,
+				targetAgent,
 				targetInstanceId: options.id,
 				isError: false,
 				result: result.text,
@@ -1441,6 +1451,7 @@ export class Session implements FlueSession {
 			this.emit({
 				type: 'delegation',
 				delegationId,
+				targetAgent,
 				targetInstanceId: options.id,
 				isError: true,
 				result: getErrorMessage(surfaced),

@@ -37,6 +37,23 @@ describe('createFlueClient', () => {
 			expect(events).toEqual([{ type: 'agent_start', instanceId: 'inst-1', session: 'chat' }, { type: 'idle', instanceId: 'inst-1', session: 'chat' }]);
 	});
 
+	it('streams attached agent delegation events', async () => {
+		const delegationStart: AttachedAgentEvent = { type: 'delegation_start', instanceId: 'inst-1', session: 'chat', delegationId: 'delegation-1', targetAgent: 'reviewer', targetInstanceId: 'review-1', prompt: 'Review.' };
+		const delegation: AttachedAgentEvent = { type: 'delegation', instanceId: 'inst-1', session: 'chat', delegationId: 'delegation-1', targetAgent: 'reviewer', targetInstanceId: 'review-1', isError: false, result: 'ok', durationMs: 1 };
+		const client = createFlueClient({
+			baseUrl: 'https://flue.test',
+			fetch: async () => new Response(sse(`event: delegation_start\ndata: ${JSON.stringify(delegationStart)}\n\nevent: delegation\ndata: ${JSON.stringify(delegation)}\n\n`), {
+				headers: { 'content-type': 'text/event-stream' },
+			}),
+		});
+
+		const events: AttachedAgentEvent[] = [];
+		for await (const event of client.agents.invoke('hello', 'inst-1', { mode: 'stream', payload: { message: 'Hello', session: 'chat' } })) {
+			events.push(event);
+		}
+		expect(events).toEqual([delegationStart, delegation]);
+	});
+
 	it('streams normalized model-turn content for attached agents', async () => {
 		const userMessage: LlmMessage = { role: 'user', content: [{ type: 'text', text: 'Hello' }] };
 		const output: LlmAssistantMessage = {

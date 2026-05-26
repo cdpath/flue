@@ -698,6 +698,9 @@ export async function invokeDirectAttached(opts: DirectAttachedOptions): Promise
 }
 
 export async function invokeAgentDelegation(opts: InvokeAgentDelegationOptions): Promise<PromptResponse> {
+	if (opts.input.targetAgent !== opts.agentName) {
+		throw new Error('[flue] Internal delegation target agent does not match the resolved deployed agent.');
+	}
 	const sessionLock = acquireDirectAgentSessionLock(opts.agentName, opts.input.id, { session: opts.input.session });
 	try {
 		const ctx = opts.createContext(

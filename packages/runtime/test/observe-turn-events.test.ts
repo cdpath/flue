@@ -245,6 +245,49 @@ describe('observe model-turn telemetry', () => {
 		}
 	});
 
+	it('runs model-invoked tasks within the owning prompt operation', async () => {
+		const provider = `faux-${crypto.randomUUID()}`;
+		const modelId = 'task-tool';
+		const modelString = `${provider}/${modelId}`;
+		const registration = registerFauxProvider({ provider, models: [{ id: modelId }] });
+		registration.setResponses([
+			fauxAssistantMessage(fauxToolCall('task', { prompt: 'Research this.' }), { stopReason: 'toolUse' }),
+			fauxAssistantMessage(fauxText('child answer')),
+			(context) => {
+				const toolResult = context.messages.findLast((message) => message.role === 'toolResult');
+				return fauxAssistantMessage(fauxText(toolResult?.role === 'toolResult' ? 'used child answer' : 'missing task result'));
+			},
+		]);
+		const events: FlueEvent[] = [];
+
+		try {
+			const ctx = createFlueContext({
+				id: 'task-tool-instance',
+				runId: undefined,
+				payload: {},
+				env: {},
+				agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: (model) => model === modelString ? registration.getModel(modelId) : undefined },
+				createDefaultEnv: async () => createEnv(),
+				defaultStore: new InMemorySessionStore(),
+			});
+			ctx.subscribeEvent((event) => { events.push(event); });
+			const session = await (await ctx.init(createAgent(() => ({ model: modelString })))).session();
+
+			const result = await session.prompt('Use a task.');
+
+			expect(result.text).toBe('used child answer');
+			expect(events.find((event) => event.type === 'task_start')).toMatchObject({ prompt: 'Research this.' });
+			expect(events.find((event) => event.type === 'task')).toMatchObject({ isError: false, result: 'child answer' });
+			const operations = events.filter((event) => event.type === 'operation_start');
+			expect(operations.some((event) => event.operationKind === 'task')).toBe(false);
+			expect(operations.filter((event) => event.session === 'default')).toEqual([
+				expect.objectContaining({ operationKind: 'prompt' }),
+			]);
+		} finally {
+			registration.unregister();
+		}
+	});
+
 	it('correlates multiple tool-mediated turns within one operation', async () => {
 		const provider = `faux-${crypto.randomUUID()}`;
 		const modelId = 'tools';

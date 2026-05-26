@@ -8,8 +8,8 @@ describe('Cloudflare build plugin', () => {
 
 		expect(entry).toContain("const INTERNAL_DISPATCH_PATH = '/__flue/internal/dispatch';");
 		expect(entry).toContain('const createdAgents = {};');
-		expect(entry).toContain('const dispatchAgentNames = new Map();');
-		expect(entry).toContain('dispatchAgentNames.set(mod.default, name);');
+		expect(entry).toContain('const deployedAgentNames = new Map();');
+		expect(entry).toContain('deployedAgentNames.set(mod.default, name);');
 		expect(entry).toContain('async enqueue(input) {');
 		expect(entry).toContain('getAgentByName(binding, input.id)');
 		expect(entry).toContain('if (isInternalDispatchRequest(request)) {');
@@ -24,7 +24,7 @@ describe('Cloudflare build plugin', () => {
 		expect(entry).toContain('return handleFlueDispatchRecovered(ctx, this, "moderator");');
 		expect(entry).toContain('const ctx = createContextForRequest(doInstance.name, undefined, input, doInstance, request, undefined, input.dispatchId);');
 		expect(entry).toContain('createDispatchAgentHandler(agent, input)(ctx)');
-		expect(entry).toContain('resolveDispatchAgentName: (agent) => dispatchAgentNames.get(agent),');
+		expect(entry).toContain('resolveDispatchAgentName: (agent) => deployedAgentNames.get(agent),');
 		expect(entry).not.toContain('runId: input.dispatchId');
 		expect(entry).not.toContain('createDurableDispatchRunStore');
 		expect(entry).not.toContain('Cloudflare external-channel dispatch processing is not supported yet');
@@ -36,17 +36,21 @@ describe('Cloudflare build plugin', () => {
 
 		expect(entry).toContain('invokeAgentDelegation,');
 		expect(entry).toContain("const INTERNAL_DELEGATION_PATH = '/__flue/internal/delegation';");
-		expect(entry).toContain('async function invokeDeployedAgentDelegation(agent, input, signal)');
-		expect(entry).toContain('const agentName = dispatchAgentNames.get(agent);');
-		expect(entry).toContain('delegate() target created agent is not a discovered default-exported agent in this built application.');
+		expect(entry).toContain('function resolveDeployedAgentDelegation(agent)');
+		expect(entry).toContain('const targetAgent = deployedAgentNames.get(agent);');
+		expect(entry).toContain('async invoke(input, signal)');
+		expect(entry).toContain('agentBindingNameFromAgentName(targetAgent)');
 		expect(entry).toContain("stub.fetch(new Request('https://flue.invalid' + INTERNAL_DELEGATION_PATH");
 		expect(entry).toContain('function createContextForRequest(id, runId, payload, doInstance, req, initialEventIndex, dispatchId, delegationId)');
 		expect(entry).toContain('delegationId,');
-		expect(entry).toContain('invokeAgentDelegation: invokeDeployedAgentDelegation,');
+		expect(entry).toContain('resolveAgentDelegation: resolveDeployedAgentDelegation,');
 		expect(entry).toContain('if (isInternalDelegationRequest(request)) {');
 		expect(entry).toContain('const agent = createdAgents[agentName];');
-		expect(entry).toContain('invokeAgentDelegation({');
+		expect(entry).toContain("assertAgentsDurabilityApi(doInstance, 'keepAliveWhile');");
+		expect(entry).toContain('doInstance.keepAliveWhile(() => invokeAgentDelegation({');
 		expect(entry).toContain('signal: request.signal,');
+		expect(entry).toContain('return Response.json({ ok: true, result });');
+		expect(entry).toContain("return Response.json({ ok: false, error: { name: error instanceof Error ? error.name : 'Error', message: error instanceof Error ? error.message : String(error) } }, { status: 500 });");
 		const delegationBranch = entry.slice(entry.indexOf('if (isInternalDelegationRequest(request)) {'), entry.indexOf('const payload = await request.clone().json().catch(() => null);'));
 		expect(delegationBranch).not.toContain("startFiber('flue:dispatch'");
 		expect(delegationBranch).not.toContain('validateAgentDispatchAdmission');
