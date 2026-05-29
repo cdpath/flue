@@ -1,6 +1,6 @@
 # Cloudflare WebSocket Example
 
-This example is the live Cloudflare WebSocket fixture. It mounts `flue()` below `/api`, rejects socket upgrades without its test token in `.flue/app.ts`, exposes a Durable Object-backed `chat` agent, and exposes a model-free `live-smoke` workflow for integration testing.
+This example is the live Cloudflare WebSocket fixture. It mounts `flue()` below `/api`, rejects socket upgrades without its test token in `src/app.ts`, exposes a Durable Object-backed `chat` agent, and exposes a model-free `live-smoke` workflow for integration testing.
 
 ## Live smoke test
 

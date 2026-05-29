@@ -71,10 +71,10 @@ function createPackedExample(name: string, keepCustomBash: boolean): string {
 	packageJson.dependencies['@flue/runtime'] = `file:${runtimeTarball}`;
 	packageJson.devDependencies['@flue/cli'] = `file:${cliTarball}`;
 	if (keepCustomBash) {
-		fs.rmSync(path.join(root, '.flue', 'workflows', 'with-imported-skill.ts'));
+		fs.rmSync(path.join(root, 'src', 'workflows', 'with-imported-skill.ts'));
 	} else {
 		delete packageJson.dependencies['just-bash'];
-		fs.rmSync(path.join(root, '.flue', 'workflows', 'with-custom-bash.ts'));
+		fs.rmSync(path.join(root, 'src', 'workflows', 'with-custom-bash.ts'));
 	}
 	fs.writeFileSync(packagePath, `${JSON.stringify(packageJson, null, '\t')}\n`);
 	fs.writeFileSync(
@@ -86,7 +86,7 @@ function createPackedExample(name: string, keepCustomBash: boolean): string {
 
 function writeDeterministicSkillWorkflow(root: string): void {
 	fs.writeFileSync(
-		path.join(root, '.flue', 'workflows', 'with-imported-skill.ts'),
+		path.join(root, 'src', 'workflows', 'with-imported-skill.ts'),
 		`import { createAgent, fauxAssistantMessage, fauxText, fauxToolCall, registerFauxProvider, type FlueContext } from '@flue/runtime';\nimport { registerProvider } from '@flue/runtime/app';\nimport review from '../skills/review/SKILL.md' with { type: 'skill' };\nexport const route = async (_c, next) => next();\nconst agent = createAgent(() => ({ model: 'fixture/reader', skills: [review] }));\nexport async function run({ init }: FlueContext) { const faux = registerFauxProvider({ api: 'fixture-skill-api', provider: 'fixture' }); registerProvider('fixture', { api: faux.api, baseUrl: 'https://fixture.invalid' }); faux.setResponses([fauxAssistantMessage(fauxToolCall('read', { path: '/.flue/packaged-skills/' + encodeURIComponent(review.id) + '/CHECKLIST.txt' }), { stopReason: 'toolUse' }), (context) => { const toolResult = context.messages[context.messages.length - 1]; const content = toolResult?.role === 'toolResult' && toolResult.content[0]?.type === 'text' ? toolResult.content[0].text : 'missing packaged content'; return fauxAssistantMessage(fauxText(content)); }]); try { const harness = await init(agent); const session = await harness.session(); const result = await session.skill('review'); return { text: result.text, marker: typeof process === 'undefined' ? undefined : process.env.RELEASE_MARKER, hasBody: 'body' in review }; } finally { faux.unregister(); } }\n`,
 	);
 }

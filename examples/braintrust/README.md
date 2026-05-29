@@ -10,7 +10,7 @@ A Node-focused example that maps Flue's public `observe(...)` stream into Braint
 - Tool calls, child tasks, and compactions become nested spans using Flue correlation fields.
 - Token and cost metrics are recorded on model-turn leaf spans; enclosing operation and compaction spans retain rolled-up usage as metadata so totals are not double-counted.
 
-The integration is entirely in [`.flue/app.ts`](.flue/app.ts). Workflows do not import Braintrust.
+The integration is entirely in [`src/app.ts`](src/app.ts). Workflows do not import Braintrust.
 
 ## Why `observe(...)`
 
@@ -70,7 +70,7 @@ examples/braintrust/
 ├── package.json
 ├── tsconfig.json
 ├── README.md
-└── .flue/
+└── src/
     ├── app.ts
     └── workflows/
         ├── prompt.ts

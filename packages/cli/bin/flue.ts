@@ -67,8 +67,6 @@ function printUsage() {
 			'\n' +
 			'Flags:\n' +
 			'  --root <path>        Project root. Default: current working directory.\n' +
-			'                       Source files (agents/) live at <root>/.flue/ if that\n' +
-			'                       directory exists, else at <root>/ directly.\n' +
 			'  --output <path>      Where the build artifacts are written. Default: <root>/dist.\n' +
 			'  --config <path>      Path to a flue.config.{ts,mts,mjs,js,cjs,cts} file (relative to cwd).\n' +
 			'                       Default: search the root dir (or cwd) for `flue.config.*`.\n' +
@@ -950,6 +948,7 @@ async function buildCommand(args: BuildArgs) {
 	try {
 		await build({
 			root: cfg.root,
+			sourceRoot: cfg.sourceRoot,
 			output: cfg.output,
 			target: cfg.target,
 		});
@@ -971,6 +970,7 @@ async function devCommand(args: DevArgs) {
 		// it to return; if it ever does, just exit cleanly.
 		await dev({
 			root: cfg.root,
+			sourceRoot: cfg.sourceRoot,
 			output: cfg.output,
 			target: cfg.target,
 			port: args.port || undefined,
@@ -1000,7 +1000,7 @@ async function buildLocalTarget(args: Pick<RunArgs | ConnectArgs, 'target' | 'ex
 	for (const file of resolvedEnvFiles) console.error(`[flue] Loading env from: ${file}`);
 	const fileEnv = parseEnvFiles(resolvedEnvFiles);
 	try {
-		await build({ root: cfg.root, output: cfg.output, target: cfg.target });
+		await build({ root: cfg.root, sourceRoot: cfg.sourceRoot, output: cfg.output, target: cfg.target });
 	} catch (err) {
 		console.error(`[flue] Build failed:`, err instanceof Error ? err.message : String(err));
 		process.exit(1);

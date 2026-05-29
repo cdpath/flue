@@ -43,7 +43,7 @@ describe('Node build plugin', () => {
 			path.join(root, 'workflows', 'smoke.ts'),
 			`export const route = async (_c, next) => next();\nexport async function run() { return { ok: true }; }\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const { child, port } = await startGeneratedServer(root);
 		try {
@@ -64,7 +64,7 @@ describe('Node build plugin', () => {
 			path.join(root, 'workflows', 'inspect.ts'),
 			`import instructions from '../instructions/proposal.md' with { type: 'markdown' };\nexport const route = async (_c, next) => next();\nexport async function run() { return { instructions }; }\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const { child, port } = await startGeneratedServer(root);
 		try {
@@ -90,7 +90,7 @@ describe('Node build plugin', () => {
 			path.join(root, 'workflows', 'inspect.ts'),
 			`import review from '../skills/review/SKILL.md' with { type: 'skill' };\nexport const route = async (_c, next) => next();\nexport async function run() { return { reference: review, hasBody: 'body' in review, hasFiles: 'files' in review }; }\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const { child, port } = await startGeneratedServer(root);
 		try {
@@ -118,7 +118,7 @@ describe('Node build plugin', () => {
 			`export const route = async (_c, next) => next();\n` +
 				`export async function run() { return { ok: true }; }\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const port = await findAvailablePort();
 		const child = spawn('node', [path.join(root, 'dist', 'server.mjs')], {
@@ -148,7 +148,7 @@ describe('Node build plugin', () => {
 			`export const route = async (c, next) => { if (c.req.header('authorization') !== 'Bearer allowed') return c.text('Unauthorized', 401); await next(); c.header('x-route', 'yes'); };\n` +
 				`export async function run() { return { ok: true }; }\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const { child, port } = await startGeneratedServer(root);
 		try {
@@ -175,7 +175,7 @@ describe('Node build plugin', () => {
 				`export const route = async (c) => c.text('Blocked', 403);\n` +
 				`export default createAgent(() => ({ model: false }));\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const { child, port } = await startGeneratedServer(root);
 		try {
@@ -203,7 +203,7 @@ describe('Node build plugin', () => {
 				`export const route = async (c, next) => { await next(); };\n` +
 				`export async function run() { const receipt = await dispatch(assistant, { id: 'thread-1', input: { text: 'hello' } }); return { accepted: typeof receipt.dispatchId === 'string' }; }\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const { child, port } = await startGeneratedServer(root);
 		try {
@@ -234,7 +234,7 @@ describe('Node build plugin', () => {
 				`app.route('/', flue());\n` +
 				`export default app;\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const { child, port } = await startGeneratedServer(root);
 		try {
@@ -254,7 +254,7 @@ describe('Node build plugin', () => {
 			`export const websocket = async (c, next) => { if (c.req.query('token') !== 'ok') return c.text('Unauthorized', 401); await next(); };\n` +
 				`export async function run(ctx) { return { echoed: ctx.payload }; }\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const { child, port } = await startGeneratedServer(root);
 		try {
@@ -282,7 +282,7 @@ describe('Node build plugin', () => {
 			`export const websocket = async (_c, next) => next();\n` +
 				`export async function run(ctx) { ctx.log.info('socket run'); return { echoed: ctx.payload }; }\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const { child, port } = await startGeneratedServer(root);
 		try {
@@ -311,7 +311,7 @@ describe('Node build plugin', () => {
 			`export const route = async (_c, next) => next();\n` +
 				`export async function run() { return { ok: true }; }\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const { child, port } = await startGeneratedServer(root);
 		try {
@@ -332,7 +332,7 @@ describe('Node build plugin', () => {
 				`export const websocket = async (_c, next) => next();\n` +
 				`export default createAgent(() => ({ model: false }));\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const { child, port } = await startGeneratedServer(root);
 		try {
@@ -370,7 +370,7 @@ describe('Node build plugin', () => {
 				`app.route('/api', flue());\n` +
 				`export default app;\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const { child, port } = await startGeneratedServer(root);
 		try {
@@ -393,7 +393,7 @@ describe('Node build plugin', () => {
 		fs.writeFileSync(path.join(root, 'agents', 'assistant.ts'), 'export default createAgent(() => ({ model: false }));\n');
 		fs.writeFileSync(path.join(root, 'agents', 'assistant.js'), 'export default createAgent(() => ({ model: false }));\n');
 
-		await expect(build({ root, target: 'node' })).rejects.toThrow('Duplicate agent basename "assistant"');
+		await expect(build({ root, sourceRoot: root, target: 'node' })).rejects.toThrow('Duplicate agent basename "assistant"');
 	});
 
 	it('invokes an internal-only workflow over local IPC without public HTTP exposure', async () => {
@@ -403,7 +403,7 @@ describe('Node build plugin', () => {
 			path.join(root, 'workflows', 'private-job.ts'),
 			`export async function run(ctx) { return { payload: ctx.payload, url: ctx.req.url }; }\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const child = startGeneratedIpcChild(root, { FLUE_CLI_TARGET: 'workflow', FLUE_CLI_NAME: 'private-job' });
 		try {
@@ -432,7 +432,7 @@ describe('Node build plugin', () => {
 			path.join(root, 'workflows', 'protected-job.ts'),
 			`export const route = async (c) => c.text('Blocked', 403);\nexport async function run() { return { ok: true }; }\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const child = startGeneratedIpcChild(root, { FLUE_CLI_TARGET: 'workflow', FLUE_CLI_NAME: 'protected-job' });
 		try {
@@ -460,7 +460,7 @@ describe('Node build plugin', () => {
 			path.join(root, 'agents', 'assistant.ts'),
 			`import { createAgent } from '@flue/runtime';\nexport default createAgent(({ id }) => ({ model: false, instructions: id }));\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const child = startGeneratedIpcChild(root, { FLUE_CLI_TARGET: 'agent', FLUE_CLI_NAME: 'assistant', FLUE_CLI_ID: 'thread-1' });
 		try {
@@ -481,7 +481,7 @@ describe('Node build plugin', () => {
 		const root = createFixtureRoot('flue-local-ipc-missing-connection-');
 		fs.mkdirSync(path.join(root, 'workflows'));
 		fs.writeFileSync(path.join(root, 'workflows', 'job.ts'), `export async function run() { return true; }\n`);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 		const child = spawn('node', [path.join(root, 'dist', 'server.mjs')], {
 			cwd: root,
 			stdio: ['ignore', 'pipe', 'pipe'],
@@ -500,7 +500,7 @@ describe('Node build plugin', () => {
 				`const run = async () => ({ ok: true });\n` +
 				`export { route, run };\n`,
 		);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const { child, port } = await startGeneratedServer(root);
 		try {
@@ -521,7 +521,7 @@ describe('Node build plugin', () => {
 		);
 		fs.writeFileSync(path.join(root, 'agents', 'first.ts'), `export { default } from '../shared.ts';\n`);
 		fs.writeFileSync(path.join(root, 'agents', 'second.ts'), `export { default } from '../shared.ts';\n`);
-		await build({ root, target: 'node' });
+		await build({ root, sourceRoot: root, target: 'node' });
 
 		const port = await findAvailablePort();
 		const child = spawn('node', [path.join(root, 'dist', 'server.mjs')], {
@@ -682,6 +682,6 @@ function testBuildContext(): BuildContext {
 		root: '/tmp/flue-test',
 		output: '/tmp/flue-test/dist',
 		runtimeVersion: '0.0.0-test',
-		options: { root: '/tmp/flue-test', target: 'node' },
+		options: { root: '/tmp/flue-test', sourceRoot: '/tmp/flue-test', target: 'node' },
 	};
 }

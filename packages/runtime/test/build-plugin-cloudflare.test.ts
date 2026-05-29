@@ -146,6 +146,6 @@ function testBuildContext(): BuildContext {
 		root: '/tmp/flue-test',
 		output: '/tmp/flue-test/dist',
 		runtimeVersion: '0.0.0-test',
-		options: { root: '/tmp/flue-test', target: 'cloudflare' },
+		options: { root: '/tmp/flue-test', sourceRoot: '/tmp/flue-test', target: 'cloudflare' },
 	};
 }

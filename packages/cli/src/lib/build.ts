@@ -27,13 +27,7 @@ export interface BuildResult {
 /**
  * Build a project into a deployable artifact.
  *
-	 * `options.root` is the project root — typically the user's cwd. Source files
-	 * (agents) are discovered from one of two locations inside the root,
-	 * with the same precedence rule the CLI uses:
-	 *
-	 *   - If `<root>/.flue/` exists, it is the source root. Look for
-	 *     `.flue/agents/`. The bare `<root>/agents/` is ignored entirely.
-	 *   - Otherwise, look at `<root>/agents/`.
+ * `options.root` is the project root — typically the user's cwd.
  *
  * Build output lands in `options.output` (defaults to `<root>/dist`).
  *
@@ -54,7 +48,7 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 	const output = path.resolve(options.output ?? path.join(root, 'dist'));
 	const plugin = resolvePlugin(options);
 
-	const sourceRoot = resolveSourceRoot(root);
+	const sourceRoot = path.resolve(options.sourceRoot);
 
 	console.log(`[flue] Building: ${root}`);
 	if (sourceRoot !== root) {
@@ -236,25 +230,6 @@ function resolvePlugin(options: BuildOptions): BuildPlugin {
 				`[flue] Unknown target: "${options.target}". Supported targets: node, cloudflare`,
 			);
 	}
-}
-
-/**
- * Resolve the source root for a project, using the `.flue/`-as-src
- * convention (analogous to Next.js's `src/` folder).
- *
- * If `<root>/.flue/` exists, it is the source root. Otherwise the source root
- * is the project root itself. The two layouts never mix — if `.flue/` exists,
- * the bare layout is ignored entirely (even if a `<root>/agents/` directory
- * also happens to be present).
- *
- * The project root (cwd) stays the same in both cases — `.flue/` only shifts
- * where source files are discovered from. The build output directory is
- * independent (defaults to `<root>/dist`, override with `output`).
- */
-export function resolveSourceRoot(root: string): string {
-	const dotFlue = path.join(root, '.flue');
-	if (fs.existsSync(dotFlue)) return dotFlue;
-	return root;
 }
 
 function discoverAgents(sourceRoot: string): AgentInfo[] {

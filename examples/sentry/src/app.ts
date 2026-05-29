@@ -11,7 +11,7 @@
  *      `Sentry.captureException(...)` calls with Flue correlation tags.
  *
  * Read top-to-bottom — there are no other Sentry-related files in the
- * project. Every workflow in `.flue/workflows/` is a plain Flue handler;
+ * project. Every workflow in `src/workflows/` is a plain Flue handler;
  * none of them know that Sentry exists.
  *
  *

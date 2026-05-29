@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Breaking Changes
+
+- Authored source discovery now selects one source directory in priority order: `.flue/`, `src/`, then the project root. `src/` is the canonical layout for examples and documentation; existing `src/` directories now take precedence over root-level agent and workflow modules.
+
 ## 0.8.1 - 2026-05-28
 
 ### New Features

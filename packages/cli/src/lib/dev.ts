@@ -16,13 +16,14 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseEnv } from 'node:util';
-import { build, cloudflareViteConfigPath, cloudflareViteInputDir, createCloudflareViteConfig, resolveSourceRoot } from './build.ts';
+import { build, cloudflareViteConfigPath, cloudflareViteInputDir, createCloudflareViteConfig } from './build.ts';
 import type { BuildOptions } from './types.ts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface DevOptions {
 	root: string;
+	sourceRoot: string;
 	/**
 	 * Where the build artifacts are written. Defaults to `<root>/dist`.
 	 * See {@link BuildOptions.output} for details.
@@ -94,6 +95,7 @@ interface DevReloader {
  */
 export async function dev(options: DevOptions): Promise<void> {
 	const root = path.resolve(options.root);
+	const sourceRoot = path.resolve(options.sourceRoot);
 	const output = path.resolve(options.output ?? path.join(root, 'dist'));
 	const port = options.port ?? DEFAULT_DEV_PORT;
 
@@ -110,6 +112,7 @@ export async function dev(options: DevOptions): Promise<void> {
 
 	const buildOptions: BuildOptions = {
 		root,
+		sourceRoot,
 		output,
 		target: options.target,
 		mode: options.target === 'cloudflare' ? 'development' : 'build',
@@ -132,13 +135,13 @@ export async function dev(options: DevOptions): Promise<void> {
 	const reloader: DevReloader =
 		options.target === 'node'
 			? new NodeReloader({ root, output, port, envFiles })
-			: await createCloudflareReloader({ root, port });
+			: await createCloudflareReloader({ root, sourceRoot, port });
 
 	await reloader.start();
 
 	if (reloader.url) {
 		console.error(`[flue] Server: ${reloader.url}`);
-		const exampleAgent = pickExampleAgentName(root);
+		const exampleAgent = pickExampleAgentName(sourceRoot);
 		if (exampleAgent) {
 			console.error(`[flue] Try: curl -X POST ${reloader.url}/agents/${exampleAgent}/test-1 \\`);
 			console.error(`         -H 'Content-Type: application/json' -d '{}'`);
@@ -152,6 +155,7 @@ export async function dev(options: DevOptions): Promise<void> {
 	const envFileSet = new Set(envFiles);
 	const watcher = createWatcher({
 		root,
+		sourceRoot,
 		output,
 		envFiles,
 		onChange: (relPath) => {
@@ -272,6 +276,7 @@ function createRebuilder(buildOptions: BuildOptions, reloader: DevReloader): Reb
 
 interface WatcherOptions {
 	root: string;
+	sourceRoot: string;
 	/**
 	 * Absolute path to the build output directory. Anything inside this
 	 * directory is ignored by the watcher — otherwise build writes would
@@ -291,22 +296,21 @@ interface WatcherHandle {
  * Watch the root for changes. Uses `fs.watch` recursive (Node 20+).
  *
  * Watched roots:
- *   - `<root>` — source modules, AGENTS.md, workspace skills, and
- *     root configuration files, including Wrangler configuration.
- *     `.flue/` is included when the root uses the `.flue/` source layout.
+ *   - `<root>` — authored source and any project-local modules it imports,
+ *     plus project configuration files, including Wrangler configuration.
  *
  * Ignored:
  *   - The build output directory (`output`, defaults to `<root>/dist`).
  *     Critical to break the build → file-change → rebuild loop.
  *   - `node_modules/`, `.git/`, `.turbo/`
- *   - Dotfiles and dotdirs at the project root, with one exception: the
- *     `.flue/` source directory and everything inside it is allowed through
- *     (since that's a valid source location under the .flue-as-src layout).
+ *   - Dotfiles and dotdirs at the project root, with one exception: `.flue/`
+ *     is allowed through only when it is the selected source directory.
  *   - Editor backup/swap suffixes
  */
 function createWatcher(options: WatcherOptions): WatcherHandle {
-	const { root, output, envFiles, onChange } = options;
+	const { root, sourceRoot, output, envFiles, onChange } = options;
 	const watchers: fs.FSWatcher[] = [];
+	const watchesDotFlue = sourceRoot === path.join(root, '.flue');
 
 	// Pre-compute the root-relative path of output for fast prefix
 	// checks. If output lives outside root, the recursive watcher
@@ -319,9 +323,7 @@ function createWatcher(options: WatcherOptions): WatcherHandle {
 
 	const isIgnoredPath = (relPath: string): boolean => {
 		const normalized = relPath.replace(/\\/g, '/');
-		// `.flue/` and anything beneath it is always allowed — that's the
-		// source-layout directory. Short-circuit before the dotfile check.
-		if (normalized === '.flue' || normalized.startsWith('.flue/')) {
+		if (watchesDotFlue && (normalized === '.flue' || normalized.startsWith('.flue/'))) {
 			return false;
 		}
 		// Anything inside the build output dir — even when the user redirects
@@ -535,6 +537,7 @@ class NodeReloader implements DevReloader {
 
 async function createCloudflareReloader(opts: {
 	root: string;
+	sourceRoot: string;
 	port: number;
 }): Promise<DevReloader> {
 	return new CloudflareReloader(opts);
@@ -543,13 +546,15 @@ async function createCloudflareReloader(opts: {
 class CloudflareReloader implements DevReloader {
 	private server: Awaited<ReturnType<typeof import('vite').createServer>> | null = null;
 	private readonly root: string;
+	private readonly sourceRoot: string;
 	private readonly port: number;
 	private readonly configPath: string;
 	private readonly entryPath: string;
 	url?: string;
 
-	constructor(opts: { root: string; port: number }) {
+	constructor(opts: { root: string; sourceRoot: string; port: number }) {
 		this.root = opts.root;
+		this.sourceRoot = opts.sourceRoot;
 		this.port = opts.port;
 		const inputDir = cloudflareViteInputDir(opts.root);
 		this.configPath = cloudflareViteConfigPath(opts.root);
@@ -570,9 +575,7 @@ class CloudflareReloader implements DevReloader {
 	shouldRebuildOn(relPath: string): boolean {
 		const normalized = relPath.replace(/\\/g, '/');
 		if (normalized === 'wrangler.jsonc' || normalized === 'wrangler.json' || normalized === 'wrangler.toml') return true;
-		if (normalized.startsWith('agents/') || normalized.startsWith('.flue/agents/')) return true;
-		if (normalized.startsWith('workflows/') || normalized.startsWith('.flue/workflows/')) return true;
-		return /^(?:\.flue\/)?app\.(?:ts|mts|js|mjs)$/.test(normalized);
+		return isSourceStructurePath(this.root, this.sourceRoot, normalized);
 	}
 
 	async reload(buildChanged: boolean): Promise<void> {
@@ -587,6 +590,17 @@ class CloudflareReloader implements DevReloader {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+export function isSourceStructurePath(root: string, sourceRoot: string, relPath: string): boolean {
+	const prefix = path.relative(root, sourceRoot).replace(/\\/g, '/');
+	const sourceRelative = prefix
+		? relPath.startsWith(`${prefix}/`)
+			? relPath.slice(prefix.length + 1)
+			: null
+		: relPath;
+	if (sourceRelative === null) return false;
+	if (sourceRelative.startsWith('agents/') || sourceRelative.startsWith('workflows/')) return true;
+	return /^app\.(?:ts|mts|js|mjs)$/.test(sourceRelative);
+}
 
 /**
  * Resolve and validate a list of env-file paths. Returns absolute paths.
@@ -629,9 +643,9 @@ export function parseEnvFiles(absolutePaths: string[]): Record<string, string> {
 
 
 
-function pickExampleAgentName(root: string): string | null {
+function pickExampleAgentName(sourceRoot: string): string | null {
 	try {
-		const agentsDir = path.join(resolveSourceRoot(root), 'agents');
+		const agentsDir = path.join(sourceRoot, 'agents');
 		if (!fs.existsSync(agentsDir)) return null;
 		for (const entry of fs.readdirSync(agentsDir)) {
 			const match = entry.match(/^([a-zA-Z0-9_-]+)\.(ts|js|mts|mjs)$/);

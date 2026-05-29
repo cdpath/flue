@@ -20,11 +20,7 @@ export interface WorkflowInfo {
 export interface BuildContext {
 	agents: AgentInfo[];
 	workflows: WorkflowInfo[];
-	/**
-		 * The project root — typically the user's cwd. Source files
-		 * (`agents/`) live here directly, or under `<root>/.flue/`
-	 * if that directory exists (the `.flue/`-as-src layout).
-	 */
+	/** The project root — typically the user's cwd. */
 	root: string;
 	/**
 	 * Absolute path to the directory the build writes its artifacts into.
@@ -94,14 +90,9 @@ export interface BuildPlugin {
 }
 
 export interface BuildOptions {
-	/**
-	 * The project root — typically the cwd of the `flue` invocation.
-	 *
-	 * Source files (`agents/`) are discovered from `<root>/.flue/`
-	 * if that directory exists, otherwise from `<root>/` directly.
-	 * The two layouts never mix — `.flue/` wins unconditionally if present.
-	 */
+	/** The project root — typically the cwd of the `flue` invocation. */
 	root: string;
+	sourceRoot: string;
 	/**
 	 * Where the build artifacts are written. Defaults to `<root>/dist`.
 	 * Pass an absolute or root-relative path to redirect the build

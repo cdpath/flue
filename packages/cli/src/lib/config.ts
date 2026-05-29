@@ -32,6 +32,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as v from 'valibot';
+import { resolveSourceRoot } from './source-root.ts';
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
@@ -46,10 +47,9 @@ export interface UserFlueConfig {
 	 */
 	target?: 'node' | 'cloudflare';
 	/**
-		 * Project root. Source files (`agents/`) live here directly,
-	 * or under `<root>/.flue/`. Relative paths are resolved vs. the
-	 * directory containing the config file (Vite-style: the config file's
-	 * dir IS the root by default). Defaults to that directory if unset.
+	 * Project root. Relative paths are resolved vs. the directory containing
+	 * the config file (Vite-style: the config file's dir IS the root by
+	 * default). Defaults to that directory if unset.
 	 */
 	root?: string;
 	/**
@@ -65,9 +65,10 @@ export interface UserFlueConfig {
  */
 export interface FlueConfig {
 	target: 'node' | 'cloudflare';
-	/** Absolute path. */
+	/** Absolute project-root path. */
 	root: string;
-	/** Absolute path. */
+	sourceRoot: string;
+	/** Absolute build-output path. */
 	output: string;
 }
 
@@ -305,6 +306,7 @@ export async function resolveConfig(opts: ResolveConfigOptions): Promise<Resolve
 		configDir,
 		fallback: path.join(root, 'dist'),
 	});
+	const sourceRoot = resolveSourceRoot(root);
 
 	return {
 		configPath,
@@ -312,6 +314,7 @@ export async function resolveConfig(opts: ResolveConfigOptions): Promise<Resolve
 		flueConfig: {
 			target: merged.target,
 			root,
+			sourceRoot,
 			output,
 		},
 	};

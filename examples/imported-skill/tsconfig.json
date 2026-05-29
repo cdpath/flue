@@ -12,6 +12,6 @@
 		"verbatimModuleSyntax": true,
 		"noEmit": true
 	},
-	"include": [".flue/**/*.ts"],
+	"include": ["src/**/*.ts"],
 	"exclude": ["dist"]
 }

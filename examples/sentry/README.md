@@ -4,8 +4,8 @@ A working example of wiring Flue workflow runs up to [Sentry](https://sentry.io)
 for error reporting.
 
 This example is intended to be read top-to-bottom as documentation. The
-entire integration lives in [`.flue/app.ts`](.flue/app.ts) — every workflow
-in `.flue/workflows/` is a plain Flue handler that doesn't import Sentry,
+entire integration lives in [`src/app.ts`](src/app.ts) — every workflow
+in `src/workflows/` is a plain Flue handler that doesn't import Sentry,
 doesn't import the bridge, and doesn't know that error reporting is
 happening.
 
@@ -62,7 +62,7 @@ examples/sentry/
 ├── tsconfig.json
 ├── AGENTS.md                 ← system prompt for any agent that calls init()
 ├── README.md                 ← you are here
-└── .flue/
+└── src/
     ├── app.ts                ← Sentry.init + observe(...) bridge
     └── workflows/
         ├── hello.ts          ← success case — no Sentry traffic
@@ -70,7 +70,7 @@ examples/sentry/
         └── explicit.ts       ← non-fatal log.error — captures while run continues
 ```
 
-Open `.flue/app.ts` first. Every line is commented to explain why it's
+Open `src/app.ts` first. Every line is commented to explain why it's
 there. The rest of this README explains how to run, what to look for,
 and how the pieces fit together.
 
