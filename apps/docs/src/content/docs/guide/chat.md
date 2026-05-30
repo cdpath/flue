@@ -1,7 +1,6 @@
 ---
 title: Chat
 description: Connect conversational platforms to continuing Flue agents and controlled outbound actions.
-lastReviewedAt: 2026-05-30
 ---
 
 Connect chat platforms to continuing agents through application-owned event handling and explicit outbound tools. This guide shows the pattern for webhook-based integrations directly and with [Chat SDK](https://chat-sdk.dev/docs), a convenient integration for conversational platforms.

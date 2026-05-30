@@ -120,5 +120,5 @@ See [Agents](/docs/guide/building-agents/) for creating and exposing continuing 
 - [Agents](/docs/guide/building-agents/) — create continuing agents and deliver direct or dispatched input.
 - [Workflows](/docs/guide/workflows/) — create finite operations and inspect workflow runs.
 - [Chat](/docs/guide/chat/) — compose conversational platform ingress with agent sessions.
-- [Build & Deploy](/docs/guide/deployment/) — choose a target and publish your application surface.
+- [Develop & Build](/docs/guide/deployment/) — run the application locally, create build output, and continue to deployment.
 - [Observability](/docs/guide/observability/) — observe workflow runs and agent activity.

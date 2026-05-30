@@ -3,7 +3,7 @@ title: Ecosystem
 description: Choose deployment environments and sandbox integrations for Flue applications.
 ---
 
-The Flue ecosystem connects deployable applications to hosting environments and sandbox providers. Start with the [Build & Deploy](/docs/guide/deployment/) guide when deciding how an application should run, then use this section for a specific deployment destination or sandbox integration.
+The Flue ecosystem connects deployable applications to hosting environments and sandbox providers. Start with [Develop & Build](/docs/guide/deployment/) to develop locally and create build output, then use this section for a specific deployment destination or sandbox integration.
 
 ## Deployment environments
 
@@ -17,7 +17,7 @@ Flue builds application artifacts for Node.js and Cloudflare. Deployment pages d
 | GitHub Actions | One-shot Node workflow execution in CI. | [Use GitHub Actions](/docs/ecosystem/deploy/github-actions/) |
 | GitLab CI/CD | One-shot Node workflow execution in CI. | [Use GitLab CI/CD](/docs/ecosystem/deploy/gitlab-ci/) |
 
-Compare target behavior first in [Build & Deploy](/docs/guide/deployment/).
+For local development and build output, see [Develop & Build](/docs/guide/deployment/).
 
 ## Sandbox connectors
 

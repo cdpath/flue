@@ -7,7 +7,7 @@ Build and deploy Flue agents as a Node.js server. This guide walks you through c
 
 By the end, you will have a Flue agent running as a Node.js server, and you will know how to add subagents, sandbox context, external CLIs, remote sandboxes, and durable session storage when your agent needs them.
 
-This guide focuses on deploying the generated Node server. First review [Build & Deploy](/docs/guide/deployment/) for target selection and persistence boundaries, then see [Routing](/docs/guide/routing/) for direct HTTP/WebSocket agent delivery, workflow endpoints, and asynchronous `dispatch(...)` from application-owned routes.
+This guide focuses on deploying the generated Node server. First review [Develop & Build](/docs/guide/deployment/) for the CLI lifecycle and build output, then see [Routing](/docs/guide/routing/) for direct HTTP/WebSocket agent delivery, workflow endpoints, and asynchronous `dispatch(...)` from application-owned routes.
 
 ## Project layout
 

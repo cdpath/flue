@@ -326,7 +326,7 @@ The merge boundary is designed so that you maintain platform configuration while
 | Flue durable resources | Flue adds required Durable Object bindings and SQLite migration entries for discovered agents, workflows, and its registry. Named Wrangler environments are retained and receive required generated resources. |
 | Custom Durable Objects, containers, and migration maintenance | Configure application-owned resources in your Wrangler file. Do not make durable edits in `.flue-vite.wrangler.jsonc`, because it is generated build input. |
 
-The Cloudflare build merge is only enough context to configure local development correctly. Continue to [Build & Deploy](/docs/guide/deployment/) to choose production durability and routes, then use [Deploy on Cloudflare](/docs/ecosystem/deploy/cloudflare/) or [Deploy on Node.js](/docs/ecosystem/deploy/node/) for target-specific setup.
+The Cloudflare build merge is only enough context to configure local development correctly. Continue to [Develop & Build](/docs/guide/deployment/) for the CLI lifecycle and deployment handoff, then use [Deploy on Cloudflare](/docs/ecosystem/deploy/cloudflare/) or [Deploy on Node.js](/docs/ecosystem/deploy/node/) for target-specific setup.
 
 ## Keep runtime application setup in authored modules
 
