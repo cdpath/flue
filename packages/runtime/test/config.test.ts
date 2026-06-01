@@ -103,6 +103,31 @@ describe('config discovery paths', () => {
 			path.join(root, 'flue.config.mjs'),
 		);
 	});
+
+	it('selects recognized config variants in priority order', () => {
+		const root = createFixtureRoot();
+		for (const basename of [
+			'flue.config.cts',
+			'flue.config.cjs',
+			'flue.config.js',
+			'flue.config.mjs',
+			'flue.config.mts',
+			'flue.config.ts',
+		]) {
+			fs.writeFileSync(path.join(root, basename), `export default { target: 'node' };\n`);
+			expect(resolveConfigPath({ cwd: root })).toBe(path.join(root, basename));
+		}
+	});
+
+	it('falls back after the selected config variant is deleted', () => {
+		const root = createFixtureRoot();
+		fs.writeFileSync(path.join(root, 'flue.config.ts'), `export default { target: 'node' };\n`);
+		fs.writeFileSync(path.join(root, 'flue.config.mjs'), `export default { target: 'node' };\n`);
+
+		expect(resolveConfigPath({ cwd: root })).toBe(path.join(root, 'flue.config.ts'));
+		fs.rmSync(path.join(root, 'flue.config.ts'));
+		expect(resolveConfigPath({ cwd: root })).toBe(path.join(root, 'flue.config.mjs'));
+	});
 });
 
 function createFixtureRoot(): string {

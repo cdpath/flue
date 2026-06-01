@@ -39,6 +39,8 @@ export interface DevOptions {
 	port?: number;
 	envFile?: string;
 	envLoader?: EnvLoader;
+	configFiles?: readonly string[];
+	onReady?: () => void;
 }
 
 /** Default port for `flue dev`. F=3, L=5, U=8, E=3 on a phone keypad. */
@@ -136,6 +138,7 @@ export async function dev(options: DevOptions): Promise<void> {
 		}
 	}
 	console.error(`[flue] Press Ctrl+C to stop\n`);
+	options.onReady?.();
 
 	// ─── Watch loop ──────────────────────────────────────────────────────────
 
@@ -149,6 +152,7 @@ export async function dev(options: DevOptions): Promise<void> {
 		sourceRoot,
 		output,
 		envFile,
+		configFiles: options.configFiles ?? [],
 		onChange: (relPath) => {
 			const isEnvFile = relPath === envFile;
 			if (!isEnvFile && !reloader.shouldRebuildOn(relPath)) return;
@@ -288,6 +292,7 @@ interface WatcherOptions {
 	output: string;
 	/** Absolute path of the selected env file to watch. */
 	envFile: string;
+	configFiles: readonly string[];
 	onChange: (relPath: string) => void;
 }
 
@@ -311,9 +316,10 @@ interface WatcherHandle {
  *   - Editor backup/swap suffixes
  */
 function createWatcher(options: WatcherOptions): WatcherHandle {
-	const { root, sourceRoot, output, envFile, onChange } = options;
+	const { root, sourceRoot, output, envFile, configFiles, onChange } = options;
 	const watchers: fs.FSWatcher[] = [];
 	const watchesDotFlue = sourceRoot === path.join(root, '.flue');
+	const ignoredConfigFiles = new Set(configFiles.map((file) => path.resolve(file)));
 
 	// Pre-compute the root-relative path of output for fast prefix
 	// checks. If output lives outside root, the recursive watcher
@@ -323,6 +329,7 @@ function createWatcher(options: WatcherOptions): WatcherHandle {
 
 	const isIgnoredPath = (relPath: string): boolean => {
 		const normalized = relPath.replace(/\\/g, '/');
+		if (ignoredConfigFiles.has(path.resolve(root, relPath))) return true;
 		if (watchesDotFlue && (normalized === '.flue' || normalized.startsWith('.flue/'))) {
 			return false;
 		}

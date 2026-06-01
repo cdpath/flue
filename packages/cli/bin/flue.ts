@@ -11,6 +11,7 @@ import {
 	resolveConfigPath,
 	type UserFlueConfig,
 } from '../src/lib/config.ts';
+import { resolveConfigCandidates } from '../src/lib/config-paths.ts';
 import { DEFAULT_DEV_PORT, dev } from '../src/lib/dev.ts';
 import { createEnvLoader, type EnvLoader, selectEnvFile } from '../src/lib/env.ts';
 import { CATEGORY_ROOTS, CONNECTORS } from './_connectors.generated.ts';
@@ -1048,6 +1049,18 @@ async function buildCommand(args: BuildArgs) {
 	}
 }
 
+const INTERNAL_DEV_SESSION = 'FLUE_INTERNAL_DEV_SESSION';
+const INTERNAL_DEV_READY = 'ready';
+
+function devConfigFiles(args: DevArgs): string[] {
+	const cwd = process.cwd();
+	return resolveConfigCandidates({
+		cwd,
+		searchFrom: args.explicitRoot ?? cwd,
+		configFile: args.configFile,
+	});
+}
+
 async function devCommand(args: DevArgs) {
 	const { cfg, envLoader } = await resolveApplicationCommand(args);
 	try {
@@ -1061,11 +1074,136 @@ async function devCommand(args: DevArgs) {
 			port: args.port || undefined,
 			envFile: envLoader.file,
 			envLoader,
+			configFiles: devConfigFiles(args),
+			onReady: () => process.send?.(INTERNAL_DEV_READY),
 		});
 	} catch (err) {
 		console.error(`[flue] Dev server failed:`, err instanceof Error ? err.message : String(err));
 		process.exit(1);
 	}
+}
+
+function readConfigFileState(file: string): string | undefined {
+	try {
+		const stat = fs.statSync(file);
+		return `${stat.mtimeMs}:${stat.size}`;
+	} catch {
+		return undefined;
+	}
+}
+
+function superviseDevCommand(args: DevArgs) {
+	const configFiles = devConfigFiles(args);
+	const configFilesByDirectory = new Map<string, Set<string>>();
+	const configFileStates = new Map(configFiles.map((file) => [file, readConfigFileState(file)]));
+	for (const file of configFiles) {
+		const directory = path.dirname(file);
+		const basenames = configFilesByDirectory.get(directory) ?? new Set<string>();
+		basenames.add(path.basename(file));
+		configFilesByDirectory.set(directory, basenames);
+	}
+
+	const watchers: fs.FSWatcher[] = [];
+	let child: ChildProcess | undefined;
+	let restartTimer: NodeJS.Timeout | undefined;
+	let restartRequested = false;
+	let replacementSession = false;
+	let sessionReady = false;
+	let shuttingDown = false;
+
+	const closeWatchers = () => {
+		for (const watcher of watchers.splice(0)) watcher.close();
+	};
+	const exit = (code: number) => {
+		closeWatchers();
+		process.exit(code);
+	};
+	const startSession = (replacement: boolean) => {
+		const cliPath = process.argv[1];
+		if (!cliPath) return exit(1);
+		restartRequested = false;
+		replacementSession = replacement;
+		sessionReady = false;
+		child = spawn(process.execPath, [cliPath, ...process.argv.slice(2)], {
+			stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
+			env: { ...process.env, [INTERNAL_DEV_SESSION]: '1' },
+		});
+		const session = child;
+		session.on('message', (message) => {
+			if (message === INTERNAL_DEV_READY) sessionReady = true;
+		});
+		session.once('exit', (code, signal) => {
+			if (child !== session) return;
+			child = undefined;
+			if (shuttingDown) exit(signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : (code ?? 1));
+			if (restartRequested) {
+				if (!restartTimer) startSession(true);
+				return;
+			}
+			if (replacementSession && !sessionReady) {
+				console.error('[flue] Dev server restart failed. Waiting for a configuration change...');
+				return;
+			}
+			exit(code ?? 1);
+		});
+	};
+	const restart = (file: string) => {
+		for (const configFile of configFiles) {
+			configFileStates.set(configFile, readConfigFileState(configFile));
+		}
+		console.error(`[flue] Configuration changed: ${file}. Restarting dev server...`);
+		restartRequested = true;
+		if (restartTimer) clearTimeout(restartTimer);
+		restartTimer = setTimeout(() => {
+			restartTimer = undefined;
+			if (!child) startSession(true);
+		}, 150);
+		child?.kill('SIGTERM');
+	};
+
+	try {
+		for (const [directory, basenames] of configFilesByDirectory) {
+			const watcher = fs.watch(directory, (_event, filename) => {
+				const basename = filename?.toString();
+				if (basename !== undefined) {
+					if (!basenames.has(basename)) return;
+					restart(path.join(directory, basename));
+					return;
+				}
+				for (const configFile of configFiles) {
+					if (configFileStates.get(configFile) !== readConfigFileState(configFile)) {
+						restart(configFile);
+						return;
+					}
+				}
+			});
+			watcher.on('error', (err) => {
+				console.error(
+					`[flue] Config watcher failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
+				exit(1);
+			});
+			watchers.push(watcher);
+		}
+	} catch (err) {
+		console.error(
+			`[flue] Config watcher failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		exit(1);
+	}
+
+	const shutdown = (signal: NodeJS.Signals) => {
+		if (shuttingDown) return;
+		shuttingDown = true;
+		if (restartTimer) clearTimeout(restartTimer);
+		closeWatchers();
+		if (!child) return exit(signal === 'SIGINT' ? 130 : 143);
+		child.kill(signal);
+	};
+	process.on('SIGINT', () => shutdown('SIGINT'));
+	process.on('SIGTERM', () => shutdown('SIGTERM'));
+	process.on('exit', () => child?.kill('SIGKILL'));
+	startSession(false);
 }
 
 async function buildLocalTarget(
@@ -1675,20 +1813,25 @@ async function addCommand(args: AddArgs) {
 
 const args = parseArgs(process.argv.slice(2));
 
-process.on('SIGINT', () => {
-	stopLocalProcess();
-	process.exit(130);
-});
+if (args.command !== 'dev') {
+	process.on('SIGINT', () => {
+		stopLocalProcess();
+		process.exit(130);
+	});
 
-process.on('SIGTERM', () => {
-	stopLocalProcess();
-	process.exit(143);
-});
+	process.on('SIGTERM', () => {
+		stopLocalProcess();
+		process.exit(143);
+	});
+}
 
 if (args.command === 'build') {
 	buildCommand(args);
 } else if (args.command === 'dev') {
-	devCommand(args);
+	if (process.env[INTERNAL_DEV_SESSION] === '1') {
+		delete process.env[INTERNAL_DEV_SESSION];
+		devCommand(args);
+	} else superviseDevCommand(args);
 } else if (args.command === 'add') {
 	addCommand(args);
 } else if (args.command === 'init') {

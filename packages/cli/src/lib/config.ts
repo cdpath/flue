@@ -9,6 +9,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as v from 'valibot';
+import { CONFIG_BASENAMES } from './config-paths.ts';
 import { resolveSourceRoot } from './source-root.ts';
 
 // ─── Public API ─────────────────────────────────────────────────────────────
@@ -92,15 +93,6 @@ const UserFlueConfigSchema = v.strictObject({
  * Config file basenames searched, in priority order. TypeScript first because
  * Flue's audience writes TS agents; the rest mirror Vite's supported set.
  */
-const CONFIG_BASENAMES = Object.freeze([
-	'flue.config.ts',
-	'flue.config.mts',
-	'flue.config.mjs',
-	'flue.config.js',
-	'flue.config.cjs',
-	'flue.config.cts',
-]);
-
 export interface ResolveConfigPathOptions {
 	/** Working directory for config discovery and relative `configFile` paths. */
 	cwd: string;
