@@ -67,12 +67,18 @@ export type WorkflowSocketEventListener = (
 /** Event listener accepted by an agent or workflow socket. */
 export type SocketEventListener = AgentSocketEventListener | WorkflowSocketEventListener;
 
+/** Options for one prompt sent over a reusable agent socket. */
+export interface AgentSocketPromptOptions {
+	/** Session name. Defaults to `default`. */
+	session?: string;
+}
+
 /** Reusable WebSocket connection to one persistent agent instance. */
 export interface AgentSocket {
 	/** Resolves after the server accepts the connection. */
 	readonly ready: Promise<void>;
 	/** Sends a prompt to the connected agent instance. Sequential prompts may reuse the connection. */
-	prompt(message: string, options?: { session?: string }): Promise<AgentSocketInvokeResult>;
+	prompt(message: string, options?: AgentSocketPromptOptions): Promise<AgentSocketInvokeResult>;
 	/** Checks the connection with a protocol ping. */
 	ping(): Promise<void>;
 	/** Subscribes to prompt events. Returns an unsubscribe function. */
@@ -363,7 +369,7 @@ class AgentSocketClient implements AgentSocket {
 		this.ready = this.connection.ready;
 	}
 
-	prompt(message: string, options: { session?: string } = {}): Promise<AgentSocketInvokeResult> {
+	prompt(message: string, options: AgentSocketPromptOptions = {}): Promise<AgentSocketInvokeResult> {
 		return this.connection.request({
 			version: 1,
 			type: 'prompt',

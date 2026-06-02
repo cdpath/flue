@@ -1,11 +1,24 @@
-export type { CreateFlueClientOptions, FlueClient, RequestHeaders } from './client.ts';
+export type {
+	CreateFlueClientOptions,
+	FlueClient,
+	ListRunsOptions,
+	RequestHeaders,
+	RunEventsOptions,
+} from './client.ts';
 export { createFlueClient } from './client.ts';
 export { FlueApiError } from './http.ts';
+export type {
+	AgentInvokeOptions,
+	AgentStreamInvokeOptions,
+	AgentSyncInvokeOptions,
+} from './public/invoke.ts';
+export type { RunStreamOptions } from './public/stream.ts';
 export type {
 	AgentSocket,
 	AgentSocketEventContext,
 	AgentSocketEventListener,
 	AgentSocketInvokeResult,
+	AgentSocketPromptOptions,
 	SocketEventContext,
 	SocketEventListener,
 	SocketInvokeResult,
@@ -42,6 +55,7 @@ export type {
 	RunOwner,
 	RunPointer,
 	RunRecord,
+	RunStatus,
 	WebSocketErrorMessage,
 	WebSocketServerMessage,
 	WorkflowRunWebSocketErrorMessage,

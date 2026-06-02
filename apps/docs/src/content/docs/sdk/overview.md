@@ -11,11 +11,15 @@ import {
   FlueApiError,
   FlueSocketError,
   createFlueClient,
+  type AgentInvokeOptions,
   type AgentManifestEntry,
   type AgentSocket,
   type AgentSocketEventContext,
   type AgentSocketEventListener,
   type AgentSocketInvokeResult,
+  type AgentSocketPromptOptions,
+  type AgentStreamInvokeOptions,
+  type AgentSyncInvokeOptions,
   type AgentWebSocketClientMessage,
   type AgentWebSocketServerMessage,
   type AttachedAgentEvent,
@@ -26,6 +30,7 @@ import {
   type FlueEvent,
   type FluePublicError,
   type ListResponse,
+  type ListRunsOptions,
   type LlmAssistantMessage,
   type LlmImageContent,
   type LlmMessage,
@@ -37,9 +42,12 @@ import {
   type LlmTurnPurpose,
   type LlmUserMessage,
   type RequestHeaders,
+  type RunEventsOptions,
   type RunOwner,
   type RunPointer,
   type RunRecord,
+  type RunStatus,
+  type RunStreamOptions,
   type SocketEventContext,
   type SocketEventListener,
   type SocketInvokeResult,
@@ -103,28 +111,18 @@ Direct agent APIs interact with persistent agent instances. They use an agent na
 ### `client.agents.invoke(...)`
 
 ```ts
-invoke(
-  name: string,
-  id: string,
-  options: {
-    mode: 'sync';
-    payload: DirectAgentPayload;
-    signal?: AbortSignal;
-  },
-): Promise<{ result: unknown }>;
+invoke(name: string, id: string, options: AgentSyncInvokeOptions): Promise<{ result: unknown }>;
 
-invoke(
-  name: string,
-  id: string,
-  options: {
-    mode: 'stream';
-    payload: DirectAgentPayload;
-    signal?: AbortSignal;
-  },
-): AsyncIterable<AttachedAgentEvent>;
+invoke(name: string, id: string, options: AgentStreamInvokeOptions): AsyncIterable<AttachedAgentEvent>;
 ```
 
-Sends one prompt to a persistent agent instance. Use `mode: 'sync'` for the terminal result or `mode: 'stream'` to consume attached-agent events.
+Sends one prompt to a persistent agent instance. Use `mode: 'sync'` for the terminal result or `mode: 'stream'` to consume attached-agent events. `AgentInvokeOptions` is the union of `AgentSyncInvokeOptions` and `AgentStreamInvokeOptions` for wrappers that forward either mode.
+
+| Field     | Type                 | Default | Description                        |
+| --------- | -------------------- | ------- | ---------------------------------- |
+| `mode`    | `'sync' \| 'stream'` | —       | Select the response mode.          |
+| `payload` | `DirectAgentPayload` | —       | Prompt payload.                    |
+| `signal`  | `AbortSignal`        | —       | Cancel the in-flight HTTP request. |
 
 #### `DirectAgentPayload`
 
@@ -146,7 +144,7 @@ Opens a reusable WebSocket connection to an agent instance.
 ```ts
 interface AgentSocket {
   readonly ready: Promise<void>;
-  prompt(message: string, options?: { session?: string }): Promise<AgentSocketInvokeResult>;
+  prompt(message: string, options?: AgentSocketPromptOptions): Promise<AgentSocketInvokeResult>;
   ping(): Promise<void>;
   onEvent(listener: AgentSocketEventListener): () => void;
   close(code?: number, reason?: string): void;
@@ -154,6 +152,12 @@ interface AgentSocket {
 ```
 
 `ready` resolves after the server accepts the connection. Sequential `prompt()` calls may reuse the socket. `onEvent()` subscribes to prompt events and returns an unsubscribe function. `close()` rejects pending work.
+
+#### `AgentSocketPromptOptions`
+
+| Field     | Type     | Default     | Description   |
+| --------- | -------- | ----------- | ------------- |
+| `session` | `string` | `'default'` | Session name. |
 
 #### `AgentSocketInvokeResult`
 
@@ -224,14 +228,7 @@ Retrieves one workflow-run record.
 ### `client.runs.events(...)`
 
 ```ts
-events(
-  runId: string,
-  options?: {
-    after?: number;
-    types?: string[];
-    limit?: number;
-  },
-): Promise<{ events: FlueEvent[] }>;
+events(runId: string, options?: RunEventsOptions): Promise<{ events: FlueEvent[] }>;
 ```
 
 Retrieves recorded workflow-run events. `after` returns events strictly after one event index. `limit` defaults to `100` and accepts `1..1000`. Use `types` to select event types.
@@ -239,18 +236,12 @@ Retrieves recorded workflow-run events. `after` returns events strictly after on
 ### `client.runs.stream(...)`
 
 ```ts
-stream(
-  runId: string,
-  options?: {
-    lastEventId?: number;
-    signal?: AbortSignal;
-    maxRetries?: number;
-    initialRetryMs?: number;
-  },
-): AsyncIterable<FlueEvent>;
+stream(runId: string, options?: RunStreamOptions): AsyncIterable<FlueEvent>;
 ```
 
 Streams workflow-run events over server-sent events until `run_end`, cancellation, or an unrecoverable error. Interrupted streams resume after the latest received event index. A stream-infrastructure `event: error` frame carries `{ error: FluePublicError }`; the SDK rejects iteration with `error.message` rather than yielding the envelope as a workflow event.
+
+#### `RunStreamOptions`
 
 | Option           | Type          | Default | Description                                                |
 | ---------------- | ------------- | ------- | ---------------------------------------------------------- |
@@ -274,15 +265,19 @@ Lists all built agents and their transport metadata. This response is intentiona
 ### `client.admin.runs.list(...)`
 
 ```ts
-list(options?: {
-  cursor?: string;
-  limit?: number;
-  status?: 'active' | 'completed' | 'errored';
-  workflowName?: string;
-}): Promise<ListResponse<RunPointer>>;
+list(options?: ListRunsOptions): Promise<ListResponse<RunPointer>>;
 ```
 
-Lists workflow-run summaries. `limit` accepts `1..1000`. Direct agent interactions and dispatches are not included.
+Lists workflow-run summaries. Direct agent interactions and dispatches are not included.
+
+#### `ListRunsOptions`
+
+| Field          | Type                                   | Default | Description                                |
+| -------------- | -------------------------------------- | ------- | ------------------------------------------ |
+| `cursor`       | `string`                               | —       | Resume after this pagination cursor.       |
+| `limit`        | `number`                               | —       | Maximum runs to return; accepts `1..1000`. |
+| `status`       | `'active' \| 'completed' \| 'errored'` | —       | Select workflow-run statuses.              |
+| `workflowName` | `string`                               | —       | Select one workflow name.                  |
 
 ### `client.admin.runs.get(...)`
 
@@ -347,6 +342,7 @@ Minimal socket interface required by the client SDK.
 | `RunOwner`           | Workflow identity recorded for a run.                                                           |
 | `RunRecord`          | Persisted workflow-run record, including status, timestamps, payload, result, and error fields. |
 | `RunPointer`         | Workflow-run summary returned by admin listing routes.                                          |
+| `RunStatus`          | Workflow-run status: `'active'`, `'completed'`, or `'errored'`.                                 |
 | `AgentManifestEntry` | Agent discovery metadata returned by the read-only admin route.                                 |
 | `ListResponse<T>`    | Cursor-paginated response with `items` and optional `nextCursor`.                               |
 

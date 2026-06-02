@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	type AgentSocketPromptOptions,
 	createFlueClient,
 	FlueSocketError,
 	type LlmAssistantMessage,
@@ -101,7 +102,8 @@ describe('WebSocket clients', () => {
 
 		const events: unknown[] = [];
 		agent.onEvent((event, context) => events.push({ event, context }));
-		const pending = agent.prompt('Hello', { session: 'chat' });
+		const options: AgentSocketPromptOptions = { session: 'chat' };
+		const pending = agent.prompt('Hello', options);
 		await Promise.resolve();
 		const request = JSON.parse(connection?.socket.sent[0] ?? '{}') as { requestId: string };
 		expect(request).toMatchObject({

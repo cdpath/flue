@@ -2,9 +2,23 @@ import type { HttpClient } from '../http.ts';
 import type { AttachedAgentEvent, AttachedAgentStreamError, DirectAgentPayload } from '../types.ts';
 import { readSse } from './stream.ts';
 
-export type InvokeOptions =
-	| { mode: 'sync'; payload: DirectAgentPayload; signal?: AbortSignal }
-	| { mode: 'stream'; payload: DirectAgentPayload; signal?: AbortSignal };
+interface AgentInvokeBaseOptions {
+	payload: DirectAgentPayload;
+	signal?: AbortSignal;
+}
+
+/** Options for one synchronous direct-agent invocation. */
+export interface AgentSyncInvokeOptions extends AgentInvokeBaseOptions {
+	mode: 'sync';
+}
+
+/** Options for one streamed direct-agent invocation. */
+export interface AgentStreamInvokeOptions extends AgentInvokeBaseOptions {
+	mode: 'stream';
+}
+
+/** Options for one direct-agent invocation. */
+export type AgentInvokeOptions = AgentSyncInvokeOptions | AgentStreamInvokeOptions;
 
 export type SyncInvokeResult = { result: unknown };
 
@@ -12,19 +26,19 @@ export function invokeAgent(
 	http: HttpClient,
 	name: string,
 	id: string,
-	options: { mode: 'stream'; payload: DirectAgentPayload; signal?: AbortSignal },
+	options: AgentStreamInvokeOptions,
 ): AsyncIterable<AttachedAgentEvent>;
 export function invokeAgent(
 	http: HttpClient,
 	name: string,
 	id: string,
-	options: { mode: 'sync'; payload: DirectAgentPayload; signal?: AbortSignal },
+	options: AgentSyncInvokeOptions,
 ): Promise<SyncInvokeResult>;
 export function invokeAgent(
 	http: HttpClient,
 	name: string,
 	id: string,
-	options: InvokeOptions,
+	options: AgentInvokeOptions,
 ): Promise<SyncInvokeResult> | AsyncIterable<AttachedAgentEvent> {
 	const path = `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`;
 	if (options.mode === 'stream') return invokeStream(http, path, id, options);

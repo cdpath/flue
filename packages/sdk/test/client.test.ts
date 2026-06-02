@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+	type AgentInvokeOptions,
+	type AgentStreamInvokeOptions,
+	type AgentSyncInvokeOptions,
 	type AttachedAgentEvent,
 	createFlueClient,
 	FlueApiError,
+	type ListRunsOptions,
 	type LlmAssistantMessage,
 	type LlmMessage,
+	type RunEventsOptions,
+	type RunStatus,
+	type RunStreamOptions,
 } from '../src/index.ts';
 import { readSse } from '../src/public/stream.ts';
 
@@ -19,12 +26,14 @@ describe('createFlueClient', () => {
 			},
 		});
 
-		await expect(
-			client.agents.invoke('hello', 'inst-1', {
-				mode: 'sync',
-				payload: { message: 'Hello', session: 'chat' },
-			}),
-		).resolves.toEqual({ result: { ok: true } });
+		const options: AgentSyncInvokeOptions = {
+			mode: 'sync',
+			payload: { message: 'Hello', session: 'chat' },
+		};
+
+		await expect(client.agents.invoke('hello', 'inst-1', options)).resolves.toEqual({
+			result: { ok: true },
+		});
 		expect(seen).toHaveLength(1);
 		expect(new URL(seen[0]?.url ?? '').pathname).toBe('/agents/hello/inst-1');
 		expect(seen[0]?.method).toBe('POST');
@@ -65,7 +74,8 @@ describe('createFlueClient', () => {
 		}))
 			agentEvents.push(event);
 		await client.runs.get('run-1');
-		await client.runs.events('run-1');
+		const runEventOptions: RunEventsOptions = {};
+		await client.runs.events('run-1', runEventOptions);
 		const runEvents = [];
 		for await (const event of client.runs.stream('run-1')) runEvents.push(event);
 
@@ -133,10 +143,12 @@ describe('createFlueClient', () => {
 		});
 
 		const events = [];
-		for await (const event of client.agents.invoke('hello', 'inst-1', {
+		const options: AgentStreamInvokeOptions = {
 			mode: 'stream',
 			payload: { message: 'Hello', session: 'chat' },
-		})) {
+		};
+		const invoke = (options: AgentInvokeOptions) => client.agents.invoke('hello', 'inst-1', options);
+		for await (const event of invoke(options) as AsyncIterable<AttachedAgentEvent>) {
 			events.push(event);
 		}
 		expect(events).toEqual([
@@ -276,7 +288,10 @@ describe('createFlueClient', () => {
 			},
 		});
 
-		await client.admin.runs.list({ status: 'active', workflowName: 'hello', limit: 10 });
+		const status: RunStatus = 'active';
+		const options: ListRunsOptions = { status, workflowName: 'hello', limit: 10 };
+
+		await client.admin.runs.list(options);
 		const parsed = new URL(url);
 		expect(parsed.pathname).toBe('/admin/runs');
 		expect(parsed.searchParams.get('status')).toBe('active');
@@ -313,10 +328,10 @@ describe('createFlueClient', () => {
 				),
 		});
 		const events: unknown[] = [];
+		const options: RunStreamOptions = { maxRetries: 0 };
 		await expect(
 			(async () => {
-				for await (const event of client.runs.stream('run_1', { maxRetries: 0 }))
-					events.push(event);
+				for await (const event of client.runs.stream('run_1', options)) events.push(event);
 			})(),
 		).rejects.toThrow('stream failed');
 		expect(events).toEqual([]);

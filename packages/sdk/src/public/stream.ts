@@ -2,7 +2,7 @@ import type { HttpClient } from '../http.ts';
 import type { FlueEvent } from '../types.ts';
 
 /** Options for streaming workflow-run events over server-sent events. */
-export interface StreamOptions {
+export interface RunStreamOptions {
 	/** Resume after this event index. */
 	lastEventId?: number;
 	/** Stop consuming events when aborted. */
@@ -22,7 +22,7 @@ export interface SseFrame {
 export async function* streamRunEvents(
 	http: HttpClient,
 	runId: string,
-	options: StreamOptions = {},
+	options: RunStreamOptions = {},
 ): AsyncIterable<FlueEvent> {
 	let lastEventId = options.lastEventId;
 	let attempt = 0;
