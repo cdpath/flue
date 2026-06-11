@@ -137,7 +137,7 @@ export interface FlueRuntime {
 	resolveDispatchAgentName?: (agent: CreatedAgent) => string | undefined;
 }
 
-export interface FlueManifest {
+interface FlueManifest {
 	agents: Array<{
 		name: string;
 		transports: { http?: true };
@@ -736,7 +736,7 @@ function normalizeAttachedRequest(request: Request, pathname: string): Request {
 	return new Request(url, request);
 }
 
-export function registeredAgentsForTransport(
+function registeredAgentsForTransport(
 	rt: FlueRuntime,
 ): readonly string[] {
 	return (rt.manifest?.agents ?? [])
@@ -744,7 +744,7 @@ export function registeredAgentsForTransport(
 		.map((agent) => agent.name);
 }
 
-export function registeredWorkflowsForTransport(
+function registeredWorkflowsForTransport(
 	rt: FlueRuntime,
 ): readonly string[] {
 	return (rt.manifest?.workflows ?? [])

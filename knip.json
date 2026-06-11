@@ -18,6 +18,9 @@
 
 		"apps/www": {
 			"entry": ["src/homepage-shaders.ts"]
+		},
+		"packages/runtime": {
+			"ignoreDependencies": ["@hono/node-server"]
 		}
 	}
 }
