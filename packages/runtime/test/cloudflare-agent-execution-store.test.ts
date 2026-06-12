@@ -120,6 +120,7 @@ describe('createSqlAgentExecutionStore()', () => {
 			{ name: 'flue_agent_submissions' },
 			{ name: 'flue_agent_turn_journals' },
 			{ name: 'flue_image_chunks' },
+			{ name: 'flue_meta' },
 			{ name: 'flue_session_entries' },
 			{ name: 'flue_sessions' },
 			{ name: 'sqlite_sequence' },
@@ -506,7 +507,12 @@ describe('createSqlSessionStore()', () => {
 
 		expect(
 			db.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name").all(),
-		).toEqual([{ name: 'flue_image_chunks' }, { name: 'flue_session_entries' }, { name: 'flue_sessions' }]);
+		).toEqual([
+			{ name: 'flue_image_chunks' },
+			{ name: 'flue_meta' },
+			{ name: 'flue_session_entries' },
+			{ name: 'flue_sessions' },
+		]);
 		expect(
 			db.prepare("SELECT name FROM pragma_table_info('flue_sessions') ORDER BY cid").all(),
 		).toEqual([{ name: 'id' }, { name: 'data' }]);

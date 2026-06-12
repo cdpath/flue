@@ -14,6 +14,7 @@
  * listener registration and stays synchronous.
  */
 
+import { ensureFlueSchemaVersion } from '../schema-version.ts';
 import type { SqlStorage } from '../sql-storage.ts';
 
 // ─── Offset utilities ───────────────────────────────────────────────────────
@@ -133,7 +134,9 @@ const DEFAULT_READ_LIMIT = 100;
  *
  * Works with both `node:sqlite` (via the {@link SqlStorage} adapter) and
  * Cloudflare DO SQLite. Tables are created in the constructor — no separate
- * migration step required.
+ * migration step required. The constructor stamps a fresh database with the
+ * current schema version and throws when the database records an unknown or
+ * newer version.
  *
  * All methods are `async` to satisfy the interface contract but resolve
  * synchronously since SQLite operations are synchronous.
@@ -142,6 +145,7 @@ export class SqliteEventStreamStore implements EventStreamStore {
 	private listeners = new Map<string, Set<() => void>>();
 
 	constructor(private sql: SqlStorage) {
+		ensureFlueSchemaVersion(sql);
 		sql.exec(CREATE_STREAMS_TABLE);
 		sql.exec(CREATE_ENTRIES_TABLE);
 	}

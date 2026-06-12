@@ -42,6 +42,7 @@ import {
 	type DirectAgentSubmissionInput,
 } from './runtime/agent-submissions.ts';
 import type { DispatchInput } from './runtime/dispatch-queue.ts';
+import { ensureFlueSchemaVersion } from './schema-version.ts';
 import { createSessionStorageKey } from './session-identity.ts';
 import type { SessionData, SessionEntry, SessionStore } from './types.ts';
 import {
@@ -53,11 +54,15 @@ import {
 } from './persisted-images.ts';
 
 /**
- * Run idempotent DDL for all agent execution store tables.
+ * Bring the agent execution store schema to the current version.
  * Called by `createSqlAgentExecutionStore` (Cloudflare DO path) and
  * by the `sqlite()` adapter's `migrate()` method (Node).
+ *
+ * Stamps a fresh database with the current schema version and throws when
+ * the database records an unknown or newer version, then runs idempotent DDL.
  */
 export function ensureSqlAgentExecutionTables(sql: SqlStorage): void {
+	ensureFlueSchemaVersion(sql);
 	ensureSessionTable(sql);
 	ensureSubmissionTable(sql);
 	ensureTurnJournalTable(sql);

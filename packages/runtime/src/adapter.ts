@@ -62,6 +62,11 @@ export type { SubmissionPayloadContext } from './adapter-helpers.ts';
 
 export { createSessionStorageKey } from './session-identity.ts';
 
+// ─── Schema versioning ──────────────────────────────────────────────────────
+
+export { assertSupportedFlueSchemaVersion, FLUE_SCHEMA_VERSION } from './schema-version.ts';
+export { PersistedSchemaVersionError } from './errors.ts';
+
 // ─── Run store and registry types ───────────────────────────────────────────
 
 export type { RunRegistry, RunPointer, ListRunsOpts, ListRunsResponse, RecordRunStartInput, RecordRunEndInput } from './runtime/run-registry.ts';

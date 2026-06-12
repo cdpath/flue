@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentExecutionStore } from '../src/agent-execution-store.ts';
+import { PersistedSchemaVersionError } from '../src/errors.ts';
 import type { SqlStorage } from '../src/sql-storage.ts';
 import { createSqlAgentExecutionStoreFromSql, ensureSqlAgentExecutionTables } from '../src/sql-agent-execution-store.ts';
 import { createNodeAgentExecutionStore, sqlite } from '../src/node/agent-execution-store.ts';
@@ -247,5 +248,37 @@ describe('sqlite() PersistenceAdapter', () => {
 		adapter.connect();
 		adapter.close?.();
 		adapter.close?.();
+	});
+
+	it('stamps a fresh database with the current schema version', () => {
+		const dir = createTempDir();
+		const dbPath = join(dir, 'stamp-test.db');
+		const adapter = sqlite(dbPath);
+		adapter.migrate?.();
+		adapter.close?.();
+
+		const db = new DatabaseSync(dbPath);
+		const rows = db.prepare(`SELECT value FROM flue_meta WHERE key = 'schema_version'`).all() as { value: string }[];
+		expect(rows).toEqual([{ value: '1' }]);
+		db.close();
+	});
+
+	it('rejects opening a database stamped with a newer schema version', () => {
+		const dir = createTempDir();
+		const dbPath = join(dir, 'newer-version-test.db');
+		const adapter = sqlite(dbPath);
+		adapter.migrate?.();
+		adapter.close?.();
+
+		const db = new DatabaseSync(dbPath);
+		db.prepare(`UPDATE flue_meta SET value = '999' WHERE key = 'schema_version'`).run();
+		db.close();
+
+		const reopened = sqlite(dbPath);
+		try {
+			expect(() => reopened.migrate?.()).toThrowError(PersistedSchemaVersionError);
+		} finally {
+			reopened.close?.();
+		}
 	});
 });

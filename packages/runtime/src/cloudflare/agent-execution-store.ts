@@ -6,6 +6,7 @@ import {
 	ensureSessionTable,
 	SqlSessionStore,
 } from '../sql-agent-execution-store.ts';
+import { ensureFlueSchemaVersion } from '../schema-version.ts';
 import type { SessionStore } from '../types.ts';
 
 interface DurableObjectStorage {
@@ -19,6 +20,7 @@ export function createSqlSessionStore(storage: DurableObjectStorage): SessionSto
 	if (!sql || typeof transactionSync !== 'function') {
 		throw new Error('[flue] Cloudflare workflow session persistence requires Durable Object SQLite.');
 	}
+	ensureFlueSchemaVersion(sql);
 	ensureSessionTable(sql);
 	const runTransaction = <T>(closure: () => T): T => transactionSync.call(storage, closure) as T;
 	return new SqlSessionStore(sql, runTransaction);

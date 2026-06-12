@@ -403,6 +403,35 @@ export class ValidationError extends FlueHttpError {
 	}
 }
 
+// ─── Persistence error vocabulary ───────────────────────────────────────────
+
+/**
+ * A persisted store records a schema/format version this runtime does not
+ * support. Thrown when opening a database stamped by a newer Flue version
+ * (e.g. after a rollback) or carrying an unrecognized version marker.
+ *
+ * Not an HTTP error — this fires when a store is opened (startup, adapter
+ * `migrate()`, Durable Object initialization), before any request is served.
+ */
+export class PersistedSchemaVersionError extends FlueError {
+	constructor({ storedVersion, supportedVersion }: { storedVersion: string; supportedVersion: number }) {
+		const numeric = /^[0-9]+$/.test(storedVersion) ? Number(storedVersion) : undefined;
+		const newer = numeric !== undefined && numeric > supportedVersion;
+		super({
+			type: 'persisted_schema_version_unsupported',
+			message: newer
+				? `This database was created by a newer Flue version (schema version ${storedVersion}; this runtime supports version ${supportedVersion}).`
+				: `This database records an unrecognized schema version ("${storedVersion}"; this runtime supports version ${supportedVersion}).`,
+			details: 'The persisted data cannot be read safely by this runtime.',
+			dev: newer
+				? `Upgrade Flue to a version that supports schema version ${storedVersion}, or point the runtime at a different database.`
+				: `The "schema_version" row in the flue_meta table is not a version this runtime recognizes. ` +
+					`Restore the database, or point the runtime at a different one.`,
+			meta: { storedVersion, supportedVersion },
+		});
+	}
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ERROR FRAMEWORK UTILITIES
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

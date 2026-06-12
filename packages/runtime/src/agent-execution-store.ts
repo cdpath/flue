@@ -184,8 +184,18 @@ export interface AgentExecutionStore {
  * The built-in `sqlite()` adapter is available from `@flue/runtime/node`.
  *
  * Lifecycle: the framework calls `migrate()` (if present) once at startup
- * to ensure the schema exists, then calls `connect()` to obtain the store.
- * On shutdown, `close()` is called to release resources.
+ * to bring the store to the current schema/format version, then calls
+ * `connect()` to obtain the store. On shutdown, `close()` is called to
+ * release resources.
+ *
+ * Versioning obligation (storage-agnostic): an adapter durably records its
+ * schema/format version when it first creates the store, and fails loudly —
+ * before reading or writing any data — when opened against a store recorded
+ * with an unknown or newer version (e.g. throw
+ * `PersistedSchemaVersionError`, exported from `@flue/runtime/adapter`).
+ * The built-in SQL adapters implement this with a one-row `flue_meta`
+ * key/value table (key `'schema_version'`); non-SQL adapters implement the
+ * same obligation natively (a key, a meta document, etc.).
  */
 export interface PersistenceAdapter {
 	/** Open the database connection and return the execution store. */
@@ -197,9 +207,13 @@ export interface PersistenceAdapter {
 	/** Return an {@link EventStreamStore} for durable event stream persistence. */
 	connectEventStreamStore(): import('./runtime/event-stream-store.ts').EventStreamStore;
 	/**
-	 * Run idempotent schema setup (CREATE TABLE IF NOT EXISTS, etc.).
-	 * Called once at startup before {@link connect}. Adapters that create
-	 * schema implicitly (e.g. LMDB) may omit this method.
+	 * Bring the store to the current schema/format version.
+	 * Called once at startup before {@link connect}. Creates any missing
+	 * schema, durably records the schema/format version when the store is
+	 * first created, and fails loudly when the store records an unknown or
+	 * newer version. Adapters that create schema implicitly (e.g. LMDB) may
+	 * omit this method, but must still uphold the versioning obligation in
+	 * their store-creating paths.
 	 */
 	migrate?(): void | Promise<void>;
 	/** Gracefully release resources (connection pools, file handles). */

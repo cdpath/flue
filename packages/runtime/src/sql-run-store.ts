@@ -10,6 +10,7 @@ import {
 	type RunRecord,
 	type RunStore,
 } from './runtime/run-store.ts';
+import { ensureFlueSchemaVersion } from './schema-version.ts';
 import type { SqlStorage } from './sql-storage.ts';
 
 type SqlRow = Record<string, unknown>;
@@ -61,6 +62,7 @@ class SqlRunStore implements RunStore {
 }
 
 function ensureRunTables(sql: SqlStorage): void {
+	ensureFlueSchemaVersion(sql);
 	sql.exec(
 		`CREATE TABLE IF NOT EXISTS flue_runs (
 		 run_id TEXT PRIMARY KEY,
