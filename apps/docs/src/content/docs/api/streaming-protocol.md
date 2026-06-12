@@ -68,7 +68,7 @@ A conditional catch-up read with `If-None-Match` may return `304`. `offset=now` 
 | `204` | Long-poll reached its 30-second timeout without new data. |
 | `304` | Conditional read matched the current ETag. |
 | `400` | Invalid stream query. |
-| `404` | Stream does not exist or is not accessible. |
+| `404` | Stream does not exist or is not accessible. Agent streams use the `stream_not_found` error category; run streams use `run_not_found`. See the [Errors Reference](/docs/api/errors-reference/). |
 
 A closed stream can still return stored history. Once caught up, its response includes `Stream-Closed: true`. Long-poll returns immediately for a closed, caught-up stream.
 
