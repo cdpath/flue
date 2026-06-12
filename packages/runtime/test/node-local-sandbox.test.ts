@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -212,6 +212,27 @@ describe('local()', () => {
 
 		await expect(harness.fs.readFile('generated/nested/result.txt')).resolves.toBe('written');
 		await expect(harness.fs.exists('generated/nested/result.txt')).resolves.toBe(true);
+		await rm(directory, { recursive: true, force: true });
+	});
+
+	it('reports target metadata with the symlink flag set when a filesystem stat targets a symlink', async () => {
+		const directory = await mkdtemp(join(tmpdir(), 'flue-local-stat-symlink-'));
+		await writeFile(join(directory, 'target.txt'), 'hello');
+		await symlink(join(directory, 'target.txt'), join(directory, 'link.txt'));
+		const harness = await createContext().init(
+			createAgent(() => ({ model: false, sandbox: local({ cwd: directory }) })),
+		);
+
+		await expect(harness.fs.stat('link.txt')).resolves.toMatchObject({
+			isFile: true,
+			isDirectory: false,
+			isSymbolicLink: true,
+			size: 5,
+		});
+		await expect(harness.fs.stat('target.txt')).resolves.toMatchObject({
+			isFile: true,
+			isSymbolicLink: false,
+		});
 		await rm(directory, { recursive: true, force: true });
 	});
 

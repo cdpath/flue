@@ -173,11 +173,17 @@ export function createLocalSessionEnv(options: LocalSessionEnvOptions = {}): Ses
 		},
 
 		async stat(p): Promise<FileStat> {
-			const s = await fs.stat(resolvePath(p));
+			const resolved = resolvePath(p);
+			// fs.stat follows symlinks, so its Stats.isSymbolicLink() is always
+			// false. lstat the path itself for the symlink flag, then follow the
+			// link for type/size/mtime so they describe the target (matching
+			// cf-sandbox's `stat -L` semantics).
+			const l = await fs.lstat(resolved);
+			const s = l.isSymbolicLink() ? await fs.stat(resolved) : l;
 			return {
 				isFile: s.isFile(),
 				isDirectory: s.isDirectory(),
-				isSymbolicLink: s.isSymbolicLink(),
+				isSymbolicLink: l.isSymbolicLink(),
 				size: s.size,
 				mtime: s.mtime,
 			};
