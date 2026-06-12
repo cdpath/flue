@@ -3,6 +3,7 @@ import {
 	fauxAssistantMessage,
 	fauxToolCall,
 	registerFauxProvider,
+	Type,
 } from '@earendil-works/pi-ai';
 import * as v from 'valibot';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -655,6 +656,226 @@ leaseExpiresAt: 1,
 					(entry) => entry.type === 'message' && entry.message.role === 'assistant',
 				);
 				expect((childAssistants.at(-1) as any)?.message.stopReason).toBe('aborted');
+			} finally {
+				nowSpy.mockRestore();
+			}
+		}, 30_000);
+
+		it('does not re-execute completed tool calls when shutdown aborts a turn mid-batch', async () => {
+			const dbPath = createTempDbPath();
+			const provider = createFauxProvider();
+			const alphaCallId = `tool:alpha-${crypto.randomUUID()}`;
+			const bravoCallId = `tool:bravo-${crypto.randomUUID()}`;
+			const charlieCallId = `tool:charlie-${crypto.randomUUID()}`;
+			provider.setResponses([
+				fauxAssistantMessage(
+					[
+						fauxToolCall('alpha', {}, { id: alphaCallId }),
+						fauxToolCall('bravo', {}, { id: bravoCallId }),
+						fauxToolCall('charlie', {}, { id: charlieCallId }),
+					],
+					{ stopReason: 'toolUse' },
+				),
+				// Consumed by the post-batch turn, which aborts before delivery.
+				fauxAssistantMessage('Aborted before delivery.'),
+			]);
+
+			// Connector tools run sequentially, so the shutdown abort breaks the
+			// tool loop mid-batch: alpha completes with a real (externally
+			// effectful) result, bravo is interrupted in flight, charlie never
+			// starts — a PARTIAL tool-result batch in durable history.
+			let bravoReachedResolve!: () => void;
+			const bravoReached = new Promise<void>((resolve) => {
+				bravoReachedResolve = resolve;
+			});
+			type ToolExecute = (
+				id: string,
+				args: unknown,
+				signal?: AbortSignal,
+			) => Promise<{ content: Array<{ type: 'text'; text: string }>; details: object }>;
+			const makeAgentWithSequentialTools = (
+				counts: Record<string, number>,
+				bravoExecute: ToolExecute,
+			) =>
+				createAgent(() => ({
+					model: `${provider.getModel().provider}/${provider.getModel().id}`,
+					sandbox: {
+						createSessionEnv: async () => createNoopSessionEnv({ cwd: '/' }),
+						tools: () => [
+							{
+								name: 'alpha',
+								label: 'alpha',
+								description: 'Completes before the abort.',
+								parameters: Type.Object({}),
+								executionMode: 'sequential' as const,
+								execute: async () => {
+									counts.alpha = (counts.alpha ?? 0) + 1;
+									return { content: [{ type: 'text' as const, text: 'alpha result' }], details: {} };
+								},
+							},
+							{
+								name: 'bravo',
+								label: 'bravo',
+								description: 'In flight when the abort lands.',
+								parameters: Type.Object({}),
+								executionMode: 'sequential' as const,
+								execute: (async (id, args, signal) => {
+									counts.bravo = (counts.bravo ?? 0) + 1;
+									return bravoExecute(id, args, signal);
+								}) satisfies ToolExecute,
+							},
+							{
+								name: 'charlie',
+								label: 'charlie',
+								description: 'Never starts before the abort.',
+								parameters: Type.Object({}),
+								executionMode: 'sequential' as const,
+								execute: async () => {
+									counts.charlie = (counts.charlie ?? 0) + 1;
+									return { content: [{ type: 'text' as const, text: 'charlie result' }], details: {} };
+								},
+							},
+						],
+					},
+				}));
+
+			const firstRunCounts: Record<string, number> = {};
+			const executionStore = await openExecutionStore(dbPath);
+			const coordinator = createNodeAgentCoordinator({
+				submissions: executionStore.submissions,
+				sessions: executionStore.sessions,
+				agents: {
+					assistant: makeAgentWithSequentialTools(firstRunCounts, async (_id, _args, signal) => {
+						bravoReachedResolve();
+						await new Promise<never>((_, reject) => {
+							if (signal?.aborted) reject(new Error('bravo aborted by shutdown'));
+							signal?.addEventListener(
+								'abort',
+								() => reject(new Error('bravo aborted by shutdown')),
+								{ once: true },
+							);
+						});
+						throw new Error('unreachable');
+					}),
+				},
+				createContext: makeFauxCreateContext(provider, executionStore),
+				eventStreamStore: createTestEventStreamStore(),
+			});
+
+			const input = makeDispatchInput();
+			await coordinator.admitDispatch(input);
+			await bravoReached;
+			await coordinator.shutdown();
+
+			// Shutdown left the partial-batch shape behind: the submission is
+			// reclaimable, the journal is uncommitted, alpha's completed result
+			// and bravo's interruption error are recorded, charlie has no result.
+			expect(firstRunCounts).toEqual({ alpha: 1, bravo: 1 });
+			expect(await executionStore.submissions.getSubmission(input.dispatchId)).toMatchObject({
+				status: 'running',
+			});
+			const journal = await executionStore.submissions.getTurnJournal(input.dispatchId);
+			expect(journal?.committed).toBe(false);
+			const storageKey = createSessionStorageKey('instance-1', 'default', 'default');
+			const interrupted = await executionStore.sessions.load(storageKey);
+			const interruptedResults = (interrupted?.entries ?? []).filter(
+				(entry) => entry.type === 'message' && entry.message.role === 'toolResult',
+			);
+			expect(interruptedResults.map((entry) => (entry as any).message.toolCallId)).toEqual([
+				alphaCallId,
+				bravoCallId,
+			]);
+
+			// "Restart": advance the clock past the shut-down coordinator's lease.
+			const realNow = Date.now.bind(Date);
+			const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 60_000);
+			try {
+				// The restarted "model" behaves like a real one: shown a context
+				// that still holds the turn's tool results it completes, but shown
+				// a replayed context with the batch dropped it re-issues the tool
+				// calls — which is exactly the duplicate external effect the
+				// repair must prevent.
+				provider.setResponses([
+					(context) =>
+						context.messages.some((message) => message.role === 'toolResult')
+							? fauxAssistantMessage('Completed after batch repair.')
+							: fauxAssistantMessage(
+									[
+										fauxToolCall('alpha', {}, { id: `${alphaCallId}-replayed` }),
+										fauxToolCall('bravo', {}, { id: `${bravoCallId}-replayed` }),
+										fauxToolCall('charlie', {}, { id: `${charlieCallId}-replayed` }),
+									],
+									{ stopReason: 'toolUse' },
+								),
+					fauxAssistantMessage('Completed after replayed tools.'),
+				]);
+				const restartCounts: Record<string, number> = {};
+				const store2 = await openExecutionStore(dbPath);
+				const restarted = createNodeAgentCoordinator({
+					submissions: store2.submissions,
+					sessions: store2.sessions,
+					agents: {
+						assistant: makeAgentWithSequentialTools(restartCounts, async () => ({
+							content: [{ type: 'text' as const, text: 'bravo result (rerun)' }],
+							details: {},
+						})),
+					},
+					createContext: makeFauxCreateContext(provider, store2),
+					eventStreamStore: createTestEventStreamStore(),
+				});
+				await restarted.reconcileSubmissions();
+
+				// No tool ran again: alpha's completed call is never re-executed,
+				// and the unresolved calls are repaired, not retried.
+				expect(restartCounts).toEqual({});
+
+				const submission = await store2.submissions.getSubmission(input.dispatchId);
+				expect(submission).toMatchObject({ status: 'settled' });
+				expect(submission?.error).toBeUndefined();
+
+				// The active path holds the repaired batch in original call order:
+				// alpha's real result preserved, bravo's collected interruption
+				// error preserved as recorded, charlie marked interrupted with an
+				// unknown outcome — never a fabricated result.
+				const session = await store2.sessions.load(storageKey);
+				if (!session) throw new Error('Expected the session to persist.');
+				const activePath: typeof session.entries = [];
+				for (
+					let entry = session.entries.find((candidate) => candidate.id === session.leafId);
+					entry;
+					entry = session.entries.find((candidate) => candidate.id === entry?.parentId)
+				) {
+					activePath.unshift(entry);
+				}
+				const activeResults = activePath.filter(
+					(entry) => entry.type === 'message' && entry.message.role === 'toolResult',
+				) as any[];
+				expect(activeResults.map((entry) => entry.message.toolCallId)).toEqual([
+					alphaCallId,
+					bravoCallId,
+					charlieCallId,
+				]);
+				expect(activeResults[0].message.isError).toBe(false);
+				expect(activeResults[0].message.content[0]).toMatchObject({ text: 'alpha result' });
+				expect(activeResults[1].message.isError).toBe(true);
+				expect(activeResults[1].message.content[0].text).toContain('bravo aborted by shutdown');
+				expect(activeResults[2].message.isError).toBe(true);
+				expect(JSON.parse(activeResults[2].message.content[0].text)).toMatchObject({
+					type: 'interrupted',
+				});
+				const activeAssistants = activePath.filter(
+					(entry) => entry.type === 'message' && entry.message.role === 'assistant',
+				) as any[];
+				expect(activeAssistants.at(-1)?.message.content).toEqual([
+					{ type: 'text', text: 'Completed after batch repair.' },
+				]);
+				const advisories = session.entries.filter(
+					(entry) =>
+						entry.type === 'message' &&
+						entry.message.role === 'signal' &&
+						(entry.message as any).type === 'submission_interrupted',
+				);
+				expect(advisories).toEqual([]);
 			} finally {
 				nowSpy.mockRestore();
 			}

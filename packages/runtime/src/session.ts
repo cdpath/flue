@@ -93,6 +93,7 @@ import { execShellWithEvents, getErrorMessage } from './shell.ts';
 import {
 	classifySubmissionState,
 	countConsecutiveRetryableModelErrors,
+	findTrailingPartialToolBatch,
 	isCompletedAssistantResponse,
 	isRetryableModelError,
 } from './submission-state.ts';
@@ -115,6 +116,7 @@ import type {
 	PromptResultResponse,
 	PromptUsage,
 	SessionData,
+	SessionEntry,
 	SessionEnv,
 	SessionStore,
 	SessionToolFactory,
@@ -761,7 +763,37 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			(entry): entry is MessageEntry => entry.type === 'message' && entry.message.role === 'assistant',
 		);
 		if (!assistant || (assistant.message as AssistantMessage).stopReason !== 'toolUse') return undefined;
+		return this.appendRepairedToolResultBatch(assistant.id, toolRequest.toolCalls, following);
+	}
 
+	/**
+	 * Complete the trailing partial tool-result batch left by a turn that was
+	 * interrupted mid-batch, so resumption continues from the repaired batch
+	 * instead of replaying — and re-executing — tool calls whose results were
+	 * already recorded. Same conservative semantics as
+	 * `repairInterruptedToolCalls`, with the batch derived from persisted
+	 * history (the journal's toolRequest does not survive the next turn the
+	 * abort also cut short). No-op when no trailing partial batch exists.
+	 */
+	private async repairTrailingPartialToolBatch(inputEntry: MessageEntry): Promise<void> {
+		const following = this.history.getActivePathSince(inputEntry.id);
+		const partial = findTrailingPartialToolBatch(following);
+		if (!partial) return;
+		await this.appendRepairedToolResultBatch(partial.entryId, partial.toolCalls, following);
+	}
+
+	/**
+	 * Shared repair core: build a complete ordered result batch for
+	 * `toolCalls`, preserving already-settled results (first-write-wins) and
+	 * synthesizing interrupted-marker error results for unresolved calls —
+	 * never a fabricated or assumed outcome. Returns the new leaf ID, or
+	 * undefined when every call already has a result.
+	 */
+	private async appendRepairedToolResultBatch(
+		assistantEntryId: string,
+		toolCalls: ReadonlyArray<{ id: string; name: string }>,
+		following: SessionEntry[],
+	): Promise<string | undefined> {
 		const settledByCallId = new Map<string, ToolResultMessage>();
 		for (const entry of following) {
 			if (entry.type === 'message' && entry.message.role === 'toolResult') {
@@ -772,11 +804,11 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			}
 		}
 
-		const hasUnsettled = toolRequest.toolCalls.some((tc) => !settledByCallId.has(tc.id));
+		const hasUnsettled = toolCalls.some((tc) => !settledByCallId.has(tc.id));
 		if (!hasUnsettled) return undefined;
 
 		const now = Date.now();
-		const orderedResults: ToolResultMessage[] = toolRequest.toolCalls.map((tc) => {
+		const orderedResults: ToolResultMessage[] = toolCalls.map((tc) => {
 			const settled = settledByCallId.get(tc.id);
 			if (settled) return settled;
 			return {
@@ -799,7 +831,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 
 		// Branch from the assistant entry so results are in correct positional
 		// order regardless of which partial results were previously persisted.
-		this.history.setLeaf(assistant.id);
+		this.history.setLeaf(assistantEntryId);
 		this.history.appendMessages(orderedResults);
 		this.rebuildHarnessContext();
 		await this.save();
@@ -2220,6 +2252,14 @@ export class Session implements FlueSession, AgentSubmissionSession {
 							// overflow is compacted and continued here, while inspection
 							// reports it 'completed'.
 							if (state.kind === 'completed' && !state.overflow) break;
+							// A turn interrupted mid-tool-batch must not replay: repair
+							// the partial batch first (recorded results preserved,
+							// unresolved calls marked interrupted) so the resumed turn
+							// continues from the repaired results instead of re-executing
+							// tool calls that already completed.
+							if (state.kind === 'resume' && state.mode === 'tool_results_partial') {
+								await this.repairTrailingPartialToolBatch(inputEntry);
+							}
 							// Recovery for the persisted trailing assistant (overflow
 							// compaction, transient-retry backoff) happens inside the turn
 							// loop, which evaluates the resume assistant before its first

@@ -434,9 +434,11 @@ export async function reconcileInterruptedSubmission(
 			((journal.phase === 'before_provider' || journal.phase === 'provider_started') &&
 				!journal.committed)) &&
 		// 'continuable': session has partial progress that restart processing
-		// can resume (persisted tool results, a recovered stream partial, a
-		// transient retryable error, or an aborted partial that replays from
-		// the last durable message).
+		// can resume (persisted tool results — repaired first at resume when
+		// the recorded batch is incomplete, so completed calls are never
+		// re-executed — a recovered stream partial, a transient retryable
+		// error, or an aborted partial that replays from the last durable
+		// message).
 		// 'uncertain' with the provider unreached: nothing observable
 		// happened, so a retry is safe. Without this, a crash after input
 		// application but before any provider response would terminally fail
