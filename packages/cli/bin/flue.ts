@@ -1440,9 +1440,12 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 	const client = createLogsClient(args);
 
 	let shouldFollow: boolean;
-	if (args.follow !== undefined) {
-		shouldFollow = args.follow;
+	if (args.follow === false) {
+		shouldFollow = false;
 	} else {
+		// Probe the run before streaming, even with explicit --follow: the DS
+		// stream client retries connection errors indefinitely, so an
+		// unreachable server would otherwise hang forever with no output.
 		let run: RunRecord;
 		try {
 			run = await client.runs.get(args.runId);
@@ -1452,7 +1455,7 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 			);
 			process.exit(1);
 		}
-		shouldFollow = run.status === 'active';
+		shouldFollow = args.follow ?? run.status === 'active';
 	}
 
 	// One-shot mode: catch-up read via DS, then exit.

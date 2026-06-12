@@ -104,7 +104,12 @@ test('forwards authentication headers to follow-mode streams', async () => {
 		(request, response) => {
 			requests.push({ url: request.url, headers: request.headers });
 			const url = new URL(request.url, 'http://localhost');
-			// DS catch-up read (first request from the client).
+			// Run probe (runs before streaming, even with explicit --follow).
+			if (url.pathname === '/admin/runs/run-1') {
+				adminRunJson(response, 'active');
+				return;
+			}
+			// DS catch-up read (first stream request from the client).
 			if (url.searchParams.get('live') !== 'sse') {
 				// Return a run_end event in the catch-up response so the stream closes.
 				response.writeHead(200, {
@@ -148,8 +153,10 @@ test('forwards authentication headers to follow-mode streams', async () => {
 		assert.equal(request.headers.authorization, 'Bearer secret');
 	}
 	// Verify the DS offset query param includes the converted --since value.
-	const firstUrl = new URL(requests[0].url, 'http://localhost');
-	assert.equal(firstUrl.searchParams.get('offset'), '0000000000000000_0000000000000025');
+	const streamRequest = requests.find((request) => request.url.startsWith('/runs/run-1'));
+	assert.ok(streamRequest, 'Expected a stream request');
+	const streamUrl = new URL(streamRequest.url, 'http://localhost');
+	assert.equal(streamUrl.searchParams.get('offset'), '0000000000000000_0000000000000025');
 });
 
 test('flushes buffered output and exits 130 when SIGINT arrives during follow mode', async () => {
@@ -157,6 +164,11 @@ test('flushes buffered output and exits 130 when SIGINT arrives during follow mo
 	await withServer(
 		(request, response) => {
 			const url = new URL(request.url, 'http://localhost');
+			// Run probe (runs before streaming, even with explicit --follow).
+			if (url.pathname === '/admin/runs/run-1') {
+				adminRunJson(response, 'active');
+				return;
+			}
 			if (url.searchParams.get('offset') === '-1') {
 				// Catch-up read: run_start plus a partial text line that pretty
 				// mode buffers until flushBuffers() runs. Stream stays open.
@@ -208,6 +220,29 @@ test('flushes buffered output and exits 130 when SIGINT arrives during follow mo
 			assert.match(stderr, /partial-tail/);
 		},
 	);
+});
+
+test('fails fast instead of retrying when the server is unreachable in follow mode', async () => {
+	// Reserve a port, then close the server so connections are refused. The
+	// DS stream client retries connection errors forever; explicit --follow
+	// must still surface unreachable servers via the run probe.
+	const server = createServer();
+	server.listen(0, '127.0.0.1');
+	await once(server, 'listening');
+	const address = server.address();
+	assert(address && typeof address === 'object');
+	server.close();
+	await once(server, 'close');
+
+	const result = await runCli([
+		'logs',
+		'run-1',
+		'--server',
+		`http://127.0.0.1:${address.port}`,
+		'--follow',
+	]);
+	assert.equal(result.code, 1);
+	assert.match(result.stderr, /Failed to fetch run run-1/);
 });
 
 test('exits with code 2 and filters output when --types excludes the failing run_end', async () => {
