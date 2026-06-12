@@ -8,7 +8,7 @@ import {
 	cloudflareViteConfigPath,
 	createCloudflareViteConfig,
 	viteInputDir,
-} from '../../cli/src/lib/build.ts';
+} from '../src/lib/build.ts';
 
 describe('Cloudflare deployment extensions', () => {
 	it('exports an authored Durable Object and composes non-HTTP Worker handlers', async () => {
@@ -167,11 +167,15 @@ async function createGeneratedFixture(
 	fs.mkdirSync(path.join(root, 'node_modules', '@earendil-works'), { recursive: true });
 	fs.mkdirSync(path.join(root, 'node_modules', '@flue'), { recursive: true });
 	fs.symlinkSync(
-		path.resolve(process.cwd(), 'node_modules', '@earendil-works', 'pi-ai'),
+		path.resolve(process.cwd(), '../runtime/node_modules/@earendil-works/pi-ai'),
 		path.join(root, 'node_modules', '@earendil-works', 'pi-ai'),
 		'dir',
 	);
-	fs.symlinkSync(process.cwd(), path.join(root, 'node_modules', '@flue', 'runtime'), 'dir');
+	fs.symlinkSync(
+		path.resolve(process.cwd(), '../runtime'),
+		path.join(root, 'node_modules', '@flue', 'runtime'),
+		'dir',
+	);
 	fs.symlinkSync(
 		path.resolve(process.cwd(), '../../examples/cloudflare/node_modules/agents'),
 		path.join(root, 'node_modules', 'agents'),

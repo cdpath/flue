@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { NodePlugin } from '../../cli/src/lib/build-plugin-node.ts';
-import type { BuildContext } from '../../cli/src/lib/types.ts';
+import { NodePlugin } from '../src/lib/build-plugin-node.ts';
+import type { BuildContext } from '../src/lib/types.ts';
 
 describe('NodePlugin', () => {
 	it('generates correct agent and workflow imports and handler maps', () => {

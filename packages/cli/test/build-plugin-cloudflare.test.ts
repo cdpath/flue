@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CloudflarePlugin } from '../../cli/src/lib/build-plugin-cloudflare.ts';
-import type { BuildContext } from '../../cli/src/lib/types.ts';
+import { CloudflarePlugin } from '../src/lib/build-plugin-cloudflare.ts';
+import type { BuildContext } from '../src/lib/types.ts';
 
 describe('CloudflarePlugin', () => {
 	it('generates distinct Flue-owned Durable Object identities for agents and workflows', async () => {

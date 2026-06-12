@@ -31,7 +31,8 @@
 		"build": "tsdown && mv dist/flue.mjs dist/flue.js",
 		"check:types": "tsc --noEmit",
 		"pretest": "pnpm run build",
-		"test": "node --test"
+		"test": "node --test test/*.test.mjs && vitest run",
+		"test:integration:cloudflare": "vitest run --config vitest.integration.cloudflare.config.ts --no-file-parallelism"
 	},
 	"dependencies": {
 		"@cloudflare/vite-plugin": "^1.39.2",
@@ -46,6 +47,7 @@
 	"devDependencies": {
 		"tsdown": "^0.22.0",
 		"tsx": "^4.19.2",
-		"typescript": "^6.0.3"
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.6"
 	}
 }

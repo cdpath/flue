@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	mergeFlueAdditions,
 	validateUserWranglerConfig,
-} from '../../cli/src/lib/cloudflare-wrangler-merge.ts';
+} from '../src/lib/cloudflare-wrangler-merge.ts';
 
 const additions = {
 	defaultName: 'fixture',
