@@ -143,6 +143,8 @@ export type RunListing = Pick<RunStore, 'lookupRun' | 'listRuns'>;
 export interface AgentManifestEntry {
 	/** Addressable agent name — the `agents/<name>.ts` module name. */
 	name: string;
+	/** Static description from the agent module's `description` export. */
+	description?: string;
 	/** Transports the agent is exposed over. */
 	transports: { http?: true };
 	/** Whether the module default-exports a created agent. */

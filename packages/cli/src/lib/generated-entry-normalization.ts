@@ -26,9 +26,12 @@ function normalizeBuiltModules(agentModules, workflowModules) {
   for (const [name, mod] of Object.entries(agentModules)) {
     if (!mod.default || mod.default.__flueCreatedAgent !== true || typeof mod.default.initialize !== 'function') throw new Error('[flue] Agent "' + name + '" must default-export createAgent(...).');
     if (mod.route !== undefined && typeof mod.route !== 'function') throw new Error('[flue] Agent "' + name + '" route export must be a callable Hono middleware value.');
+    if (mod.description !== undefined && (typeof mod.description !== 'string' || mod.description.trim().length === 0)) throw new Error('[flue] Agent "' + name + '" description export must be a non-empty string.');
     const transports = {};
     if (typeof mod.route === 'function') transports.http = true;
-    manifest.agents.push({ name, transports, created: true });
+    const entry = { name, transports, created: true };
+    if (mod.description !== undefined) entry.description = mod.description;
+    manifest.agents.push(entry);
     createdAgents[name] = mod.default;
     const previousDispatchName = dispatchAgentNames.get(mod.default);
     if (previousDispatchName !== undefined) throw new Error('[flue] Agents "' + previousDispatchName + '" and "' + name + '" default-export the same created agent value. Use distinct createAgent(...) values for dispatchable agent modules.');

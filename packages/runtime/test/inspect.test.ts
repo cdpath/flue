@@ -137,14 +137,24 @@ describe('listAgents()', () => {
 			target: 'node',
 			manifest: {
 				agents: [
-					{ name: 'support', transports: { http: true }, created: true },
+					{
+						name: 'support',
+						description: 'Resolves customer support tickets.',
+						transports: { http: true },
+						created: true,
+					},
 					{ name: 'offline', transports: {}, created: false },
 				],
 			},
 		});
 
 		await expect(listAgents()).resolves.toEqual([
-			{ name: 'support', transports: { http: true }, created: true },
+			{
+				name: 'support',
+				description: 'Resolves customer support tickets.',
+				transports: { http: true },
+				created: true,
+			},
 			{ name: 'offline', transports: {}, created: false },
 		]);
 	});
