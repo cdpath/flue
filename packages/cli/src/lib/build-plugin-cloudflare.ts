@@ -498,22 +498,17 @@ function parseRunRoute(request) {
   const url = new URL(request.url);
   if (url.pathname === INTERNAL_RUN_METADATA_PATH) return { action: 'get' };
   const segments = url.pathname.split('/').filter(Boolean);
-  if (segments.length < 2 || segments[0] !== 'runs') return null;
+  if (segments.length !== 2 || segments[0] !== 'runs') return null;
   let runId;
   try {
     runId = decodeURIComponent(segments[1] || '');
   } catch {
     return null;
   }
-  const child = segments[2];
   if (!runId) return null;
-  if (!child) {
-    const method = request.method;
-    // GET/HEAD on /runs/:runId → DS stream read. The outer worker rejects
-    // other methods before forwarding, so nothing else routes here.
-    if (method === 'GET' || method === 'HEAD') return { action: 'ds-stream', runId };
-    return null;
-  }
+  // GET/HEAD on /runs/:runId → DS stream read. The outer worker rejects
+  // other methods before forwarding, so nothing else routes here.
+  if (request.method === 'GET' || request.method === 'HEAD') return { action: 'ds-stream', runId };
   return null;
 }
 
