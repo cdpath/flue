@@ -1498,6 +1498,13 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 		live: true,
 	});
 
+	// Follow mode owns signal handling: drop handlers registered earlier so
+	// they cannot preempt graceful cancellation. Dependencies loaded at import
+	// time (e.g. wrangler) install SIGINT/SIGTERM handlers that call
+	// process.exit() synchronously, which would skip stream cancellation, the
+	// buffer flush in `finally`, and the 130 exit code below.
+	process.removeAllListeners('SIGINT');
+	process.removeAllListeners('SIGTERM');
 	let signalled = false;
 	const onSignal = () => {
 		signalled = true;
@@ -2034,7 +2041,11 @@ async function addCommand(args: AddArgs) {
 
 const args = parseArgs(process.argv.slice(2));
 
-if (args.command !== 'dev') {
+// `dev` manages its own supervisor shutdown; `logs` follow mode installs its
+// own handlers that cancel the stream and flush buffers before exiting.
+// Neither spawns a local process, so they skip the hard-exit handlers (which
+// would otherwise run first in listener order and preempt graceful paths).
+if (args.command !== 'dev' && args.command !== 'logs') {
 	process.on('SIGINT', () => {
 		stopLocalProcess();
 		process.exit(130);

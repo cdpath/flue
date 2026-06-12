@@ -152,6 +152,64 @@ test('forwards authentication headers to follow-mode streams', async () => {
 	assert.equal(firstUrl.searchParams.get('offset'), '0000000000000000_0000000000000025');
 });
 
+test('flushes buffered output and exits 130 when SIGINT arrives during follow mode', async () => {
+	const heldResponses = [];
+	await withServer(
+		(request, response) => {
+			const url = new URL(request.url, 'http://localhost');
+			if (url.searchParams.get('offset') === '-1') {
+				// Catch-up read: run_start plus a partial text line that pretty
+				// mode buffers until flushBuffers() runs. Stream stays open.
+				response.writeHead(200, {
+					'content-type': 'application/json',
+					'Stream-Next-Offset': '0000000000000000_0000000000000002',
+					'Stream-Up-To-Date': 'true',
+				});
+				response.end(
+					JSON.stringify([
+						{ type: 'run_start', runId: 'run-1', workflowName: 'test', eventIndex: 0 },
+						{ type: 'text_delta', runId: 'run-1', text: 'partial-tail', eventIndex: 1 },
+					]),
+				);
+				return;
+			}
+			// Live tail (long-poll or SSE): hold the connection open so the
+			// stream only ends via client-side cancellation.
+			heldResponses.push(response);
+		},
+		async (server) => {
+			const child = spawn(
+				process.execPath,
+				[cli.pathname, 'logs', 'run-1', '--server', server, '--follow', '--format', 'pretty'],
+				{ stdio: ['ignore', 'pipe', 'pipe'] },
+			);
+			let stdout = '';
+			let stderr = '';
+			child.stdout.setEncoding('utf8');
+			child.stderr.setEncoding('utf8');
+			child.stdout.on('data', (chunk) => {
+				stdout += chunk;
+			});
+			const sawRunStart = new Promise((resolve) => {
+				child.stderr.on('data', (chunk) => {
+					stderr += chunk;
+					if (stderr.includes('run:start')) resolve();
+				});
+			});
+			await sawRunStart;
+			child.kill('SIGINT');
+			const [code, signal] = await once(child, 'exit');
+			for (const response of heldResponses) response.destroy();
+			// Graceful exit through the cancellation path, not a hard
+			// process.exit() from a signal handler: the buffered partial text
+			// line must be flushed before exiting.
+			assert.equal(signal, null);
+			assert.equal(code, 130, `stdout: ${stdout}\nstderr: ${stderr}`);
+			assert.match(stderr, /partial-tail/);
+		},
+	);
+});
+
 test('exits with code 2 and filters output when --types excludes the failing run_end', async () => {
 	await withServer(
 		(request, response) => {
