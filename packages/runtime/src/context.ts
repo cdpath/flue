@@ -53,6 +53,11 @@ export function skillsDirIn(basePath: string): string {
  * relative references resolvable and picks up mid-session edits without
  * re-initialising the agent. We parse the frontmatter here only to
  * populate the system-prompt's "Available Skills" registry.
+ *
+ * Discovered skills the user didn't opt into must not be able to brick
+ * the session: a malformed SKILL.md is skipped with a warning instead of
+ * failing init(). Explicitly imported/packaged skills stay strict — they
+ * are validated at build time where a hard error is actionable.
  */
 async function discoverLocalSkills(
 	env: SessionEnv,
@@ -79,7 +84,14 @@ async function discoverLocalSkills(
 		if (!(await env.exists(skillMdPath))) continue;
 
 		const content = await env.readFile(skillMdPath);
-		const parsed = parseSkillMarkdown(content, { directoryName: entry, path: skillMdPath });
+		let parsed: ReturnType<typeof parseSkillMarkdown>;
+		try {
+			parsed = parseSkillMarkdown(content, { directoryName: entry, path: skillMdPath });
+		} catch (error) {
+			const detail = error instanceof Error ? error.message : String(error);
+			console.warn(`[flue] Skipping invalid workspace skill "${entry}": ${detail}`);
+			continue;
+		}
 		const workspaceSkill: WorkspaceSkill = {
 			__flueWorkspaceSkill: true,
 			name: parsed.name,

@@ -126,6 +126,40 @@ describe('session.skill()', () => {
 		expect(result.text).toBe('Workspace review complete.');
 	});
 
+	it('skips a malformed workspace skill when another valid skill is discovered alongside it', async () => {
+		const provider = createProvider();
+		provider.setResponses([fauxAssistantMessage('Workspace review complete.')]);
+		const ctx = createFlueContext({
+			id: 'malformed-skill-instance',
+			payload: {},
+			env: {},
+			agentConfig: {
+				systemPrompt: '',
+				skills: {},
+				model: undefined,
+				resolveModel: () => provider.getModel(),
+			},
+			createDefaultEnv: async () =>
+				createEnv({
+					files: {
+						'/repo/.agents/skills/review/SKILL.md':
+							'---\nname: review\ndescription: Review workspace changes.\n---\nRead the workspace checklist.',
+						'/repo/.agents/skills/Broken_Skill/SKILL.md':
+							'---\nname: Broken_Skill\ndescription: Vendored skill with a nonconforming name.\n---\nBody.',
+					},
+				}),
+			defaultStore: new InMemorySessionStore(),
+		});
+		const harness = await ctx.init(
+			createAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
+		);
+		const session = await harness.session();
+
+		const result = await session.skill('review');
+
+		expect(result.text).toBe('Workspace review complete.');
+	});
+
 	it('activates a packaged skill when a packaged skill reference is requested', async () => {
 		const provider = createProvider();
 		let modelPrompt: unknown;
