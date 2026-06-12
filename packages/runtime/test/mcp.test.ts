@@ -111,6 +111,23 @@ describe('connectMcpServerWithClient()', () => {
 		expect(mcp.client.listTools).toHaveBeenNthCalledWith(3, { cursor: '' });
 	});
 
+	it('rejects tool discovery when a server repeats a tools/list cursor', async () => {
+		mcp.listToolsResult = {
+			tools: [
+				{
+					name: 'lookup',
+					inputSchema: { type: 'object' },
+				},
+			],
+			nextCursor: 'catalog-page-2',
+		};
+
+		await expect(connectMcpServerWithClient('catalog', mcp.client, transport)).rejects.toThrow(
+			'[flue] MCP server "catalog" repeated tools/list cursor "catalog-page-2" during tool discovery.',
+		);
+		expect(mcp.client.close).toHaveBeenCalledOnce();
+	});
+
 	it('namespaces and sanitizes tool names when server or tool names contain unsupported characters', async () => {
 		mcp.listToolsResult = {
 			tools: [

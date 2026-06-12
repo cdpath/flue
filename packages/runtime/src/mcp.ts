@@ -81,7 +81,14 @@ export async function connectMcpServerWithClient(
 		await client.connect(transport);
 		let page = await client.listTools();
 		const tools = [...page.tools];
+		const seenCursors = new Set<string>();
 		while (page.nextCursor !== undefined) {
+			if (seenCursors.has(page.nextCursor)) {
+				throw new Error(
+					`[flue] MCP server "${name}" repeated tools/list cursor ${JSON.stringify(page.nextCursor)} during tool discovery.`,
+				);
+			}
+			seenCursors.add(page.nextCursor);
 			page = await client.listTools({ cursor: page.nextCursor });
 			tools.push(...page.tools);
 		}
