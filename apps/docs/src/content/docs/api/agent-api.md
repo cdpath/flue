@@ -10,7 +10,7 @@ The agent API is exported from `@flue/runtime`.
 import {
   FlueError,
   ResultUnavailableError,
-  Type,
+  ToolInputValidationError,
   connectMcpServer,
   createAgent,
   defineAgentProfile,
@@ -50,8 +50,10 @@ import {
   type SkillReference,
   type TaskOptions,
   type ThinkingLevel,
+  type ToolArgs,
   type ToolDefinition,
   type ToolParameters,
+  type ToolValidationIssue,
 } from '@flue/runtime';
 ```
 
@@ -84,9 +86,9 @@ When a profile is selected as a subagent with `session.task()`, it is self-conta
 
 #### `DurabilityConfig`
 
-| Field         | Type     | Default   | Description                                                                                                                                                                                                                                                                                                          |
-| ------------- | -------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `maxAttempts` | `number` | `10`      | Maximum total attempts before the submission is terminalized as failed. The initial run counts as the first attempt; each interruption that requires a new attempt consumes another.                                                                                                                                 |
+| Field         | Type     | Default   | Description                                                                                                                                                                                                                                                                                              |
+| ------------- | -------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `maxAttempts` | `number` | `10`      | Maximum total attempts before the submission is terminalized as failed. The initial run counts as the first attempt; each interruption that requires a new attempt consumes another.                                                                                                                     |
 | `timeoutMs`   | `number` | `3600000` | Maximum wall-clock milliseconds for a single submission. Submissions exceeding this limit are aborted and settled as failed. Set higher for long-running agents (e.g. `21_600_000` for a 6-hour agent). The timeout is checked cooperatively at turn boundaries, not preemptively during provider calls. |
 
 #### `CompactionConfig`
@@ -113,32 +115,31 @@ Skill metadata registered with an agent, harness, or profile. Imported `SkillRef
 ## `defineTool(...)`
 
 ```ts
-function defineTool<TParams extends ToolParameters>(
-  tool: ToolDefinition<TParams>,
-): ToolDefinition<TParams>;
+function defineTool<TParams extends ToolParameters>(tool: ToolDefinition<TParams>): ToolDefinition;
 ```
 
-Validates a custom model-callable tool and returns a shallow-frozen copy.
+Validates a custom model-callable tool and returns a shallow-frozen, normalized copy.
 
-This validates the required definition fields. Tool names are checked for collisions with other active tools when a session assembles its tool list.
+Valibot `parameters` are converted to plain JSON Schema once at definition time, and `execute` is wrapped so model-supplied arguments are parsed against the schema before the callback runs. A validation failure throws `ToolInputValidationError`, which the agent loop returns to the model as an error tool result so it can retry with corrected arguments; `meta.issues` carries the failures as `ToolValidationIssue` values in [Standard Schema](https://standardschema.dev)'s issues shape. Tool names are checked for collisions with other active tools when a session assembles its tool list.
 
 #### `ToolDefinition`
 
-| Field         | Type                                                                   | Description                                                            |
-| ------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `name`        | `string`                                                               | Tool name. Must be unique across active built-in and custom tools.     |
-| `description` | `string`                                                               | Tells the model when and how to use this tool.                         |
-| `parameters`  | `ToolParameters`                                                       | JSON Schema-compatible parameter schema.                               |
-| `execute`     | `(args: Record<string, any>, signal?: AbortSignal) => Promise<string>` | Returns text sent back to the model. Thrown errors become tool errors. |
-
-`Type` is re-exported from `@flue/runtime` for constructing JSON Schema-compatible parameters.
+| Field         | Type                                                                 | Description                                                                                                                                 |
+| ------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | `string`                                                             | Tool name. Must be unique across active built-in and custom tools.                                                                          |
+| `description` | `string`                                                             | Tells the model when and how to use this tool.                                                                                              |
+| `parameters`  | `ToolParameters`                                                     | Valibot object schema (`v.object({ ... })`), or a raw JSON Schema object for schemas produced elsewhere (e.g. MCP).                         |
+| `execute`     | `(args: ToolArgs<TParams>, signal?: AbortSignal) => Promise<string>` | Receives the parsed, typed arguments (the schema's `v.InferOutput`). Returns text sent back to the model. Thrown errors become tool errors. |
 
 ```ts
+import { defineTool } from '@flue/runtime';
+import * as v from 'valibot';
+
 const lookupPolicy = defineTool({
   name: 'lookup_policy',
   description: 'Read one approved policy by topic.',
-  parameters: Type.Object({ topic: Type.String() }),
-  execute: async ({ topic }) => readPolicy(String(topic)),
+  parameters: v.object({ topic: v.string() }),
+  execute: async ({ topic }) => readPolicy(topic),
 });
 ```
 
@@ -501,12 +502,12 @@ Runs a shell command and records its command exchange in conversation state.
 
 #### `ShellOptions`
 
-| Field       | Type                     | Description                                                                          |
-| ----------- | ------------------------ | ------------------------------------------------------------------------------------ |
-| `env`       | `Record<string, string>` | Environment variables supplied to the command.                                        |
-| `cwd`       | `string`                 | Working directory supplied to the command.                                            |
+| Field       | Type                     | Description                                                                               |
+| ----------- | ------------------------ | ----------------------------------------------------------------------------------------- |
+| `env`       | `Record<string, string>` | Environment variables supplied to the command.                                            |
+| `cwd`       | `string`                 | Working directory supplied to the command.                                                |
 | `timeoutMs` | `number`                 | Wall-clock deadline in milliseconds, forwarded to the sandbox connector's native timeout. |
-| `signal`    | `AbortSignal`            | Cancel this operation.                                                                |
+| `signal`    | `AbortSignal`            | Cancel this operation.                                                                    |
 
 #### `ShellResult`
 

@@ -122,7 +122,8 @@ A dispatched chat message is an operation in an agent instance, not a workflow r
 Receiving a platform event does not automatically send the agent's text back to that platform. Give an agent an explicit outbound tool when replying is an allowed action. With the thread-as-instance identity above, a Chat SDK-backed reply tool can be scoped to the thread chosen by application code:
 
 ```ts title="src/agents/assistant.ts"
-import { Type, createAgent, defineTool } from '@flue/runtime';
+import { createAgent, defineTool } from '@flue/runtime';
+import * as v from 'valibot';
 import { bot } from '../chat.ts';
 
 export default createAgent(({ id }) => ({
@@ -132,7 +133,7 @@ export default createAgent(({ id }) => ({
     defineTool({
       name: 'reply_to_chat_thread',
       description: 'Post a response into the current chat thread.',
-      parameters: Type.Object({ text: Type.String() }),
+      parameters: v.object({ text: v.string() }),
       execute: async ({ text }) => {
         await bot.thread(id).post(text);
         return 'Reply sent.';

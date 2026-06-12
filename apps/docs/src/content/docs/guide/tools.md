@@ -13,7 +13,8 @@ A [skill](/docs/guide/skills/) provides reusable instructions; a tool executes a
 Use `defineTool(...)` to create a new tool for your agent:
 
 ```ts title="src/shared/order-tools.ts"
-import { Type, defineTool } from '@flue/runtime';
+import { defineTool } from '@flue/runtime';
+import * as v from 'valibot';
 
 const orderStatuses = new Map([
   ['order_1042', 'packed'],
@@ -23,11 +24,11 @@ const orderStatuses = new Map([
 export const lookupOrderStatus = defineTool({
   name: 'lookup_order_status',
   description: 'Look up the current fulfillment status for one order ID.',
-  parameters: Type.Object({
-    orderId: Type.String({ description: 'Order ID in the form order_1234' }),
+  parameters: v.object({
+    orderId: v.pipe(v.string(), v.description('Order ID in the form order_1234')),
   }),
   execute: async ({ orderId }) => {
-    const status = orderStatuses.get(String(orderId));
+    const status = orderStatuses.get(orderId);
     return status ?? 'No order was found.';
   },
 });
@@ -37,8 +38,8 @@ A custom tool has four parts:
 
 - `name` is the model-facing name used to call the tool.
 - `description` helps the model decide when the capability is appropriate.
-- `parameters` describes the inputs the model may supply. For authored tools, build this schema with `Type` from `@flue/runtime`.
-- `execute` performs the application-controlled work and returns text for the model to use in its response.
+- `parameters` describes the inputs the model may supply. For authored tools, build this schema with [valibot](https://valibot.dev) (`v.object({ ... })`); a raw JSON Schema object is also accepted for schemas produced elsewhere.
+- `execute` performs the application-controlled work and returns text for the model to use in its response. Arguments are validated and parsed against the schema before `execute` runs, so the callback receives typed values; when validation fails, the model receives the schema issues as a tool error and can retry with corrected arguments.
 
 Use clear action-oriented names, such as `lookup_order_status` or `create_support_ticket`. Tools available during the same operation must have distinct names.
 
@@ -68,7 +69,8 @@ A tool's parameters are model-selected inputs, not an authorization boundary. Yo
 For an addressable customer-support agent, the selected agent instance can establish which customer's orders are accessible:
 
 ```ts title="src/agents/customer-orders.ts"
-import { Type, createAgent, defineTool } from '@flue/runtime';
+import { createAgent, defineTool } from '@flue/runtime';
+import * as v from 'valibot';
 import { orders } from '../shared/orders.ts';
 
 export default createAgent(({ id: customerId }) => ({
@@ -77,11 +79,10 @@ export default createAgent(({ id: customerId }) => ({
     defineTool({
       name: 'lookup_customer_order',
       description: 'Look up one order belonging to this customer.',
-      parameters: Type.Object({
-        orderId: Type.String(),
+      parameters: v.object({
+        orderId: v.string(),
       }),
       execute: async ({ orderId }) => {
-        if (typeof orderId !== 'string') throw new Error('An order ID is required.');
         const status = await orders.getStatus(customerId, orderId);
         return status ?? 'No accessible order was found.';
       },
@@ -98,9 +99,9 @@ The same principle applies in workflows. When a workflow establishes the authori
 const lookupCustomerOrder = defineTool({
   name: 'lookup_customer_order',
   description: 'Look up one order belonging to the authenticated customer.',
-  parameters: Type.Object({ orderId: Type.String() }),
+  parameters: v.object({ orderId: v.string() }),
   execute: async ({ orderId }) => {
-    const status = await orders.getStatus(customer.id, String(orderId));
+    const status = await orders.getStatus(customer.id, orderId);
     return status ?? 'No accessible order was found.';
   },
 });
