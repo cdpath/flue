@@ -61,14 +61,15 @@ export async function cfSandboxToSessionEnv(
 		},
 
 		async readdir(path: string): Promise<string[]> {
-			const result = await sandbox.exec(`ls -1 '${path.replace(/'/g, "'\\''")}'`);
+			// NUL-separated `find` includes dotfiles (unlike plain `ls`) and
+			// survives filenames containing newlines.
+			const result = await sandbox.exec(
+				`find '${path.replace(/'/g, "'\\''")}' -mindepth 1 -maxdepth 1 -printf '%f\\0'`,
+			);
 			if (!result.success) {
 				throw new Error(`readdir failed for ${path}: ${result.stderr}`);
 			}
-			return result.stdout
-				.trim()
-				.split('\n')
-				.filter((s: string) => s.length > 0);
+			return result.stdout.split('\0').filter((s: string) => s.length > 0);
 		},
 
 		async exists(path: string): Promise<boolean> {

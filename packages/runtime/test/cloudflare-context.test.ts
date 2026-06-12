@@ -140,6 +140,26 @@ describe('cfSandboxToSessionEnv()', () => {
 		});
 	});
 
+	it('includes dotfile entries when a wrapped sandbox directory is listed', async () => {
+		const exec = vi.fn(async () => ({
+			success: true,
+			stdout: '.env\0.gitignore\0src\0README.md\0',
+			stderr: '',
+		}));
+		const env = await cfSandboxToSessionEnv({ exec }, '/workspace/project');
+
+		await expect(env.readdir('config')).resolves.toEqual([
+			'.env',
+			'.gitignore',
+			'src',
+			'README.md',
+		]);
+
+		expect(exec).toHaveBeenCalledWith(
+			`find '/workspace/project/config' -mindepth 1 -maxdepth 1 -printf '%f\\0'`,
+		);
+	});
+
 	it('issues a single well-formed rm -rf command when recursive and force are both requested', async () => {
 		const exec = vi.fn(async () => ({ success: true, stdout: '', stderr: '' }));
 		const env = await cfSandboxToSessionEnv({ exec }, '/workspace/project');
