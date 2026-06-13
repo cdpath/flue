@@ -848,40 +848,18 @@ In addition to per-provider packages:
 10. Keep packages independently releasable and avoid a shared runtime package
     unless repeated implementation evidence justifies one.
 
-## Parallel ownership and commit sequencing
+## Parallel ownership and commits
 
 Provider research and implementation may proceed independently after the shared
 contract is confirmed. Each workstream should own disjoint package, example,
 recipe, guide, and API-reference files.
 
-Recommended sequence:
-
-1. **Research checkpoint**
-   - Commit provider research briefs, package names, likely route surfaces,
-     target spikes, and consequential deferrals.
-2. **Provider commits**
-   - Prefer a coherent commit after completing each provider so its
-     implementation remains independently understandable and reviewable.
-   - Split a provider across commits or group closely related provider work
-     when shared research, infrastructure, or validation makes that history
-     clearer.
-   - Avoid commits that mix unrelated partial provider implementations merely
-     to follow a fixed sequence.
-   - Existing GitHub, Slack, and Discord audits may be separate commits.
-3. **Recipe and example commits**
-   - May travel with each provider when focused validation is easier.
-4. **Shared documentation and navigation**
-   - Land after package APIs are stable enough to document.
-5. **Final audit fixes**
-   - Record reference-gap findings and primary-source resolutions.
-6. **Validation and artifact commit**
-   - Regenerate prepared docs, connector indexes, and other intentional
-     generated outputs.
-
-The implementation goal for this plan should authorize commits as work reaches
-coherent review points. Before each commit, inspect the worktree and stage only
-the intended provider or shared changes. Never absorb unrelated user edits
-merely to satisfy a preferred commit boundary.
+Commit work at coherent, reviewable points. A completed provider will often be
+a natural commit boundary, but the implementor may split or combine work when
+shared research, infrastructure, documentation, or validation makes another
+history clearer. Before committing, inspect the worktree and stage only the
+intended provider or shared changes; never absorb unrelated user edits to
+satisfy a preferred boundary.
 
 ## Consequential decisions and deferrals
 
