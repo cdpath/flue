@@ -15,7 +15,8 @@ application-owned GitHub API behavior to a Flue project.
 Read local instructions, detect the package manager and target, and select the
 first existing source root: `<root>/.flue/`, then `<root>/src/`, then
 `<root>/`. Inspect existing agents, environment types, secret conventions, and
-the behavior the user wants from GitHub.
+whether the application responds to issue comments, pull-request conversation
+comments, inline review comments, opened issues, or another verified delivery.
 
 Install `@flue/github` and the official `@octokit/rest` SDK with the project's
 package manager. Do not add a generic GitHub tool collection.
@@ -41,13 +42,13 @@ export const channel = createGitHubChannel({
   // Path: /channels/github/webhook
   async webhook({ event }) {
     switch (event.type) {
-      case 'issues.opened':
-      case 'pull_request.opened': {
+      case 'issue_comment.created':
+      case 'pull_request_review_comment.created': {
         const issue = {
           owner: event.repository.owner,
           repo: event.repository.name,
           issueNumber:
-            event.type === 'issues.opened'
+            event.type === 'issue_comment.created'
               ? event.payload.issue.number
               : event.payload.pullRequest.number,
         };
@@ -58,6 +59,8 @@ export const channel = createGitHubChannel({
             deliveryId: event.deliveryId,
             installationId: event.installationId,
             issue,
+            sender: event.sender,
+            comment: event.payload.comment,
           },
         });
         return;
@@ -94,8 +97,9 @@ export function commentOnIssue(ref: { owner: string; repo: string; issueNumber: 
 For Cloudflare projects, follow the project's typed binding convention and use
 `env` from `cloudflare:workers` when a module-level client needs Worker
 bindings. Do not assume `process.env` is the project's chosen Worker secret
-interface. Octokit is Fetch-based and must still be verified through the
-project's actual Cloudflare build.
+interface. Octokit's typed REST request path is Fetch-based and executes in
+workerd without `nodejs_compat`, but the completed project must still pass its
+actual Cloudflare build.
 
 If the user did not ask for issue comments, replace or omit the example tool.
 Never let the model choose arbitrary owners, repositories, issue numbers, API
@@ -127,5 +131,7 @@ purposes. Follow existing project secret conventions and never invent values.
 
 Run the project's typecheck and configured Flue build. Create a local JSON
 payload and `X-Hub-Signature-256` HMAC to test success, invalid signatures,
-grouped cases, `/channels/github/webhook`, and the empty `200` default. Do not
-contact GitHub.
+issue and pull-request comment variants, grouped cases,
+`/channels/github/webhook`, the nine-second handler deadline, and the empty
+`200` default. Exercise one Octokit call through a fake Fetch transport in
+workerd. Do not contact GitHub.

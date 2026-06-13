@@ -933,6 +933,124 @@ Record every material deviation with:
 Do not use deviation permission for unrecorded feature expansion, copying the
 reference repository, or unrelated refactors.
 
+## Implementation log
+
+### GitHub — 2026-06-13
+
+Status:
+
+- Complete.
+
+Reference capability brief:
+
+- The high-level adapter documentation describes issue and pull-request
+  conversation comments, inline pull-request review comments, mentions, and
+  broad outbound message operations.
+- No reference implementation, architecture, types, fixtures, payloads,
+  snapshots, or tests were consulted.
+
+Primary sources:
+
+- GitHub webhook signature validation documentation.
+- GitHub webhook best practices and ten-second response requirement.
+- GitHub webhook event and payload documentation.
+- Official `@octokit/webhooks-types` declarations for current required payload
+  fields.
+- Official Octokit REST declarations and package metadata.
+
+Clean-room affirmation:
+
+- All normalized types, synthetic payloads, fake ids, assertions, and tests
+  were designed from GitHub's official documentation and Flue's existing
+  channel contract. Nothing was copied or translated from Chat SDK source or
+  tests.
+
+Decisions:
+
+- Keep one `POST /webhook` surface and the existing fixed-webhook constructor.
+- Add `pull_request_review_comment.created` as the missing message-like inbound
+  family.
+- Add typed sender information and enough issue, pull-request, and comment
+  context to implement mention-driven dispatch without reading `raw`.
+- Keep inline review comments in the containing pull request's existing
+  canonical Flue conversation identity. Expose the top-level review-comment id
+  so applications that need inline replies can bind that capability
+  explicitly.
+- Add a default and maximum nine-second application handler deadline, leaving
+  one second before GitHub's documented ten-second connection deadline.
+- Continue accepting both official JSON and form-encoded webhook payloads.
+- Keep Octokit as the project-owned outbound client. Its typed
+  `issues.createComment()` path executes in workerd through Fetch without
+  `nodejs_compat`.
+
+Tests:
+
+- Existing exact-byte HMAC, malformed input, response, identity, and workerd
+  coverage retained.
+- Added original synthetic issue-comment and pull-request-review-comment
+  payloads with distinct ids and text, including top-level and reply thread-id
+  behavior.
+- Added handler deadline coverage.
+- Added a permanent workerd test for Octokit's real typed request construction
+  against a fake Fetch transport.
+
+Validation:
+
+- Package build, strict typecheck, Node tests, and workerd tests pass.
+- Example strict typecheck, workerd outbound-client test, Node build, and
+  Cloudflare build pass.
+- A built Node server returns an empty `200` for an original valid signed
+  delivery and `401` for an invalid signature.
+- Documentation check and production build pass.
+- The real `flue add` CLI test suite passes.
+- Prepared publish docs were regenerated.
+- The packed package contains the intended runtime declarations, JavaScript,
+  README, license, and prepared docs without an outbound client or tool.
+- A clean strict TypeScript consumer compiles against the packed tarball and
+  sees the named review-comment reference type.
+
+Focused review:
+
+- Reviewed the complete provider diff for verification ordering, malformed
+  payload handling, normalized event narrowing, response deadlines, response
+  serialization, public declarations, Cloudflare execution, and documentation.
+- Replaced an awkward emitted nested-property comment with a named public
+  review-comment reference and added the missing top-level thread-id contract
+  test.
+- No unresolved correctness findings remain.
+
+Deviations:
+
+- The initial brief left event expansion open. Official GitHub and high-level
+  reference documentation showed that inline review comments are a distinct
+  webhook family required for the intended comment-driven channel, so the
+  package now normalizes that family.
+
+Deferrals:
+
+- None.
+
+Final reference gap audit:
+
+- Reopened only the pinned high-level GitHub adapter README and capability
+  matrix after implementation; no reference source or test files were used.
+- Issue and pull-request conversation comments and inline review comments are
+  represented as verified ingress.
+- Flue deliberately keeps one canonical conversation identity at the
+  containing issue or pull request rather than creating a separate agent
+  identity for each inline review-comment thread. The normalized top-level
+  review-comment id still enables application-owned inline replies.
+- Mention detection and response policy remain application behavior over the
+  normalized sender and comment fields.
+- Posting, editing, deleting, reactions, history, enterprise API endpoints, and
+  other broad outbound capabilities remain available through the
+  project-owned Octokit client rather than a Flue abstraction.
+- PAT and GitHub App credential selection, installation-client caching,
+  multi-tenant installation lookup, OAuth, and durable installation state are
+  outside this fixed-installation ingress package. Signed payload installation
+  ids are exposed for applications that need them.
+- No justified ingress gap remains.
+
 ## Implementation log template
 
 Append one section per provider while implementing:

@@ -10,7 +10,7 @@ describe('@flue/github workerd ingress', () => {
 		const github = createGitHubChannel({ webhookSecret: 'secret', webhook });
 		const app = new Hono();
 		for (const route of github.routes) app.on(route.method, route.path, route.handler);
-		const body = ` {\n "action":"opened",\n "repository":{"id":12,"name":"widgets","owner":{"login":"acme"}},\n "issue":{"number":42,"title":"Unicode café","body":null}\n} `;
+		const body = ` {\n "action":"opened",\n "repository":{"id":12,"name":"widgets","owner":{"login":"acme"}},\n "sender":{"id":77,"login":"octo-reviewer","type":"User"},\n "issue":{"number":42,"title":"Unicode café","body":null}\n} `;
 		const signature = await hmac('secret', body);
 		const headers = {
 			'content-type': 'application/json',

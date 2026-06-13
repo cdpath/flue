@@ -8,11 +8,13 @@ import type {
 } from './index.ts';
 
 const DEFAULT_BODY_LIMIT = 25 * 1024 * 1024;
+const DEFAULT_HANDLER_TIMEOUT_MS = 9_000;
 const encoder = new TextEncoder();
 
 interface GitHubWebhookHandlerOptions<E extends Env> {
 	webhookSecret: string;
 	bodyLimit?: number;
+	handlerTimeoutMs?: number;
 	webhook(input: { c: Context<E>; event: GitHubEvent }): GitHubWebhookHandlerResult;
 }
 
@@ -20,8 +22,15 @@ export function createGitHubWebhookHandler<E extends Env>(
 	options: GitHubWebhookHandlerOptions<E>,
 ): Handler<E> {
 	const bodyLimit = options.bodyLimit ?? DEFAULT_BODY_LIMIT;
+	const handlerTimeoutMs = options.handlerTimeoutMs ?? DEFAULT_HANDLER_TIMEOUT_MS;
 	if (!Number.isSafeInteger(bodyLimit) || bodyLimit <= 0) {
 		throw new TypeError('GitHub webhook bodyLimit must be a positive integer.');
+	}
+	if (!Number.isSafeInteger(handlerTimeoutMs) || handlerTimeoutMs <= 0) {
+		throw new TypeError('GitHub webhook handlerTimeoutMs must be a positive integer.');
+	}
+	if (handlerTimeoutMs > DEFAULT_HANDLER_TIMEOUT_MS) {
+		throw new TypeError('GitHub webhook handlerTimeoutMs must not exceed 9000ms.');
 	}
 	const secret = encoder.encode(options.webhookSecret);
 
@@ -69,16 +78,13 @@ export function createGitHubWebhookHandler<E extends Env>(
 			: normalizeUnknownEvent(eventName, action, raw, request.headers, deliveryId);
 		if (!event) return new Response(null, { status: 400 });
 
-		try {
-			const result = await options.webhook({ c, event });
-			return serializeHandlerResult(c, result);
-		} catch {
-			return new Response(null, { status: 500 });
-		}
+		const outcome = await runHandler(() => options.webhook({ c, event }), handlerTimeoutMs);
+		if (outcome.type !== 'success') return new Response(null, { status: 500 });
+		return serializeHandlerResult(outcome.value);
 	};
 }
 
-function serializeHandlerResult<E extends Env>(_c: Context<E>, value: unknown): Response {
+function serializeHandlerResult(value: unknown): Response {
 	if (value instanceof Response) return value;
 	if (value === undefined) return new Response(null, { status: 200 });
 	if (!isJsonValue(value)) return new Response(null, { status: 500 });
@@ -177,12 +183,18 @@ function isGitHubEventName(value: string | undefined): value is keyof GitHubEven
 	return (
 		value === 'issues.opened' ||
 		value === 'issue_comment.created' ||
-		value === 'pull_request.opened'
+		value === 'pull_request.opened' ||
+		value === 'pull_request_review_comment.created'
 	);
 }
 
 function isSupportedBaseEvent(value: string): boolean {
-	return value === 'issues' || value === 'issue_comment' || value === 'pull_request';
+	return (
+		value === 'issues' ||
+		value === 'issue_comment' ||
+		value === 'pull_request' ||
+		value === 'pull_request_review_comment'
+	);
 }
 
 function normalizeUnknownEvent(
@@ -217,6 +229,8 @@ function normalizeEvent(
 	const ownerLogin = owner && readNonEmptyString(owner, 'login');
 	if (!repositoryId || !repositoryName || !ownerLogin) return undefined;
 
+	const sender = normalizeUser(readRecord(raw, 'sender'));
+	if (!sender) return undefined;
 	const installationId = readInstallationId(raw);
 	if (installationId === null) return undefined;
 	const common = {
@@ -226,6 +240,7 @@ function normalizeEvent(
 		installationTarget: readInstallationTarget(headers),
 		installationId,
 		repository: { id: repositoryId, owner: ownerLogin, name: repositoryName },
+		sender,
 		raw,
 	};
 
@@ -246,14 +261,16 @@ function normalizeEvent(
 		const issue = readRecord(raw, 'issue');
 		const comment = readRecord(raw, 'comment');
 		const issueNumber = issue && readPositiveInteger(issue, 'number');
+		const title = issue && readString(issue, 'title');
+		const kind = issue && isRecord(issue.pull_request) ? 'pull_request' : 'issue';
 		const commentId = comment && readPositiveInteger(comment, 'id');
 		const body = comment && readString(comment, 'body');
-		if (!issueNumber || !commentId || body === undefined) return undefined;
+		if (!issueNumber || title === undefined || !commentId || body === undefined) return undefined;
 		return {
 			...common,
 			type,
 			payload: {
-				issue: { number: issueNumber },
+				issue: { number: issueNumber, title, kind },
 				comment: { id: commentId, body },
 			},
 		} satisfies GitHubWebhookEvent<
@@ -262,18 +279,61 @@ function normalizeEvent(
 		>;
 	}
 
+	if (type === 'pull_request.opened') {
+		const pullRequest = readRecord(raw, 'pull_request');
+		const number = pullRequest && readPositiveInteger(pullRequest, 'number');
+		const title = pullRequest && readString(pullRequest, 'title');
+		const body = pullRequest && readNullableString(pullRequest, 'body');
+		if (!number || title === undefined || body === undefined) return undefined;
+		return {
+			...common,
+			type,
+			payload: { pullRequest: { number, title, body } },
+		} satisfies GitHubWebhookEvent<
+			'pull_request.opened',
+			GitHubEvents['pull_request.opened']['payload']
+		>;
+	}
+
 	const pullRequest = readRecord(raw, 'pull_request');
-	const number = pullRequest && readPositiveInteger(pullRequest, 'number');
+	const comment = readRecord(raw, 'comment');
+	const pullNumber = pullRequest && readPositiveInteger(pullRequest, 'number');
 	const title = pullRequest && readString(pullRequest, 'title');
-	const body = pullRequest && readNullableString(pullRequest, 'body');
-	if (!number || title === undefined || body === undefined) return undefined;
+	const commentId = comment && readPositiveInteger(comment, 'id');
+	const inReplyToId = comment && readOptionalPositiveInteger(comment, 'in_reply_to_id');
+	const reviewId = comment && readPositiveInteger(comment, 'pull_request_review_id');
+	const commentBody = comment && readString(comment, 'body');
+	const path = comment && readString(comment, 'path');
+	const line = comment && readNullablePositiveInteger(comment, 'line');
+	if (
+		!pullNumber ||
+		title === undefined ||
+		!commentId ||
+		inReplyToId === null ||
+		!reviewId ||
+		commentBody === undefined ||
+		path === undefined ||
+		line === undefined
+	) {
+		return undefined;
+	}
 	return {
 		...common,
 		type,
-		payload: { pullRequest: { number, title, body } },
+		payload: {
+			pullRequest: { number: pullNumber, title },
+			comment: {
+				id: commentId,
+				threadId: inReplyToId ?? commentId,
+				reviewId,
+				body: commentBody,
+				path,
+				line,
+			},
+		},
 	} satisfies GitHubWebhookEvent<
-		'pull_request.opened',
-		GitHubEvents['pull_request.opened']['payload']
+		'pull_request_review_comment.created',
+		GitHubEvents['pull_request_review_comment.created']['payload']
 	>;
 }
 
@@ -328,4 +388,54 @@ function readNullableString(
 function readPositiveInteger(value: Record<string, unknown>, key: string): number | undefined {
 	const field = value[key];
 	return Number.isSafeInteger(field) && (field as number) > 0 ? (field as number) : undefined;
+}
+
+function readOptionalPositiveInteger(
+	value: Record<string, unknown>,
+	key: string,
+): number | undefined | null {
+	if (!Object.hasOwn(value, key)) return undefined;
+	return readPositiveInteger(value, key) ?? null;
+}
+
+function readNullablePositiveInteger(
+	value: Record<string, unknown>,
+	key: string,
+): number | null | undefined {
+	const field = value[key];
+	if (field === null) return null;
+	return Number.isSafeInteger(field) && (field as number) > 0 ? (field as number) : undefined;
+}
+
+function normalizeUser(value: Record<string, unknown> | undefined): {
+	id: number;
+	login: string;
+	type: 'Bot' | 'User' | 'Organization';
+} | undefined {
+	if (!value) return undefined;
+	const id = readPositiveInteger(value, 'id');
+	const login = readNonEmptyString(value, 'login');
+	const type = readString(value, 'type');
+	if (!id || !login || (type !== 'Bot' && type !== 'User' && type !== 'Organization')) {
+		return undefined;
+	}
+	return { id, login, type };
+}
+
+type HandlerOutcome<T> = { type: 'success'; value: T } | { type: 'failure' } | { type: 'timeout' };
+
+async function runHandler<T>(handler: () => T | Promise<T>, timeoutMs: number): Promise<HandlerOutcome<T>> {
+	let timeout: ReturnType<typeof setTimeout> | undefined;
+	const handlerPromise = Promise.resolve()
+		.then(handler)
+		.then(
+			(value): HandlerOutcome<T> => ({ type: 'success', value }),
+			(): HandlerOutcome<T> => ({ type: 'failure' }),
+		);
+	const timeoutPromise = new Promise<HandlerOutcome<T>>((resolve) => {
+		timeout = setTimeout(() => resolve({ type: 'timeout' }), timeoutMs);
+	});
+	const outcome = await Promise.race([handlerPromise, timeoutPromise]);
+	if (timeout !== undefined) clearTimeout(timeout);
+	return outcome;
 }

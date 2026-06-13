@@ -23,7 +23,8 @@ https://example.com/channels/github/webhook
 
 If `flue()` is mounted beneath an outer prefix, include that prefix. Configure
 `application/json` or `application/x-www-form-urlencoded`, set a webhook
-secret, and subscribe to the events the application handles.
+secret, and subscribe to the minimum event set the application handles. The
+example uses **Issue comments** and **Pull request review comments**.
 
 `GITHUB_WEBHOOK_SECRET` verifies inbound deliveries.
 `GITHUB_TOKEN` authenticates outbound Octokit calls. Keep them in the
@@ -47,13 +48,13 @@ export const channel = createGitHubChannel({
   // Path: /channels/github/webhook
   async webhook({ event }) {
     switch (event.type) {
-      case 'issues.opened':
-      case 'pull_request.opened': {
+      case 'issue_comment.created':
+      case 'pull_request_review_comment.created': {
         const issue = {
           owner: event.repository.owner,
           repo: event.repository.name,
           issueNumber:
-            event.type === 'issues.opened'
+            event.type === 'issue_comment.created'
               ? event.payload.issue.number
               : event.payload.pullRequest.number,
         };
@@ -64,6 +65,8 @@ export const channel = createGitHubChannel({
             deliveryId: event.deliveryId,
             installationId: event.installationId,
             issue,
+            sender: event.sender,
+            comment: event.payload.comment,
           },
         });
         return;
@@ -97,9 +100,12 @@ export function commentOnIssue(ref: { owner: string; repo: string; issueNumber: 
 }
 ```
 
-The package forwards verified `issues.opened`, `issue_comment.created`, and
-`pull_request.opened` variants. Verified unsupported deliveries arrive as
-`type: 'unknown'`. GitHub `ping` is handled internally.
+The package forwards verified `issues.opened`, `issue_comment.created`,
+`pull_request.opened`, and `pull_request_review_comment.created` variants.
+Issue comments distinguish issue and pull-request conversations. Review
+comments include the top-level thread comment id needed for an inline reply.
+Verified unsupported deliveries arrive as `type: 'unknown'`. GitHub `ping` is
+handled internally.
 
 ## Bind the tool
 
@@ -118,8 +124,15 @@ comment body; trusted code binds the repository and issue. The channel-agent
 import cycle is supported because both imported bindings are read only inside
 deferred callbacks or initializers.
 
-GitHub does not automatically retry every failed webhook delivery. Preserve
-`deliveryId` when useful for idempotency and use GitHub's delivery inspection
-and manual redelivery tools when required.
+GitHub requires a `2xx` response within ten seconds. The package's handler
+deadline defaults to nine seconds. A timed-out handler may continue running, so
+claim `deliveryId` in application storage before dispatch when duplicate
+admission matters. GitHub does not automatically retry every failed webhook
+delivery; use its delivery inspection and manual redelivery tools when needed.
+
+Octokit's REST methods use Fetch and the example's typed
+`issues.createComment()` operation is tested in workerd without
+`nodejs_compat`. Cloudflare projects should still initialize credentials from
+their typed Worker bindings and verify their complete target build.
 
 See the [`@flue/github` API reference](/docs/api/github-channel/).

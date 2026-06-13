@@ -19,9 +19,10 @@ describe('createGitHubChannel()', () => {
 			action: 'opened',
 			installation: { id: 90 },
 			repository: { id: 12, name: 'widgets', owner: { login: 'acme' } },
+			sender: { id: 77, login: 'octo-reviewer', type: 'User' },
 			issue: { number: 42, title: 'Unicode café', body: null },
 		};
-		const body = ` {\n  "action": "opened",\n  "installation": { "id": 90 },\n  "repository": { "id": 12, "name": "widgets", "owner": { "login": "acme" } },\n  "issue": { "number": 42, "title": "Unicode café", "body": null }\n} `;
+		const body = ` {\n  "action": "opened",\n  "installation": { "id": 90 },\n  "repository": { "id": 12, "name": "widgets", "owner": { "login": "acme" } },\n  "sender": { "id": 77, "login": "octo-reviewer", "type": "User" },\n  "issue": { "number": 42, "title": "Unicode café", "body": null }\n} `;
 
 		const response = await channelApp(github).request(
 			await signedRequest({
@@ -47,6 +48,7 @@ describe('createGitHubChannel()', () => {
 				installationTarget: { id: '5678', type: 'repository' },
 				installationId: 90,
 				repository: { id: 12, owner: 'acme', name: 'widgets' },
+				sender: { id: 77, login: 'octo-reviewer', type: 'User' },
 				payload: { issue: { number: 42, title: 'Unicode café', body: null } },
 				raw,
 			},
@@ -77,6 +79,7 @@ describe('createGitHubChannel()', () => {
 				body: JSON.stringify({
 					action: 'opened',
 					repository: { id: 12, name: 'widgets', owner: { login: 'acme' } },
+					sender: { id: 77, login: 'octo-reviewer', type: 'User' },
 					issue: { number: 42, title: 'Bug', body: null },
 				}),
 			}),
@@ -88,6 +91,7 @@ describe('createGitHubChannel()', () => {
 				body: JSON.stringify({
 					action: 'opened',
 					repository: { id: 12, name: 'widgets', owner: { login: 'acme' } },
+					sender: { id: 77, login: 'octo-reviewer', type: 'User' },
 					pull_request: { number: 7, title: 'Feature', body: 'Details' },
 				}),
 			}),
@@ -96,6 +100,92 @@ describe('createGitHubChannel()', () => {
 		expect(issueResponse.status).toBe(200);
 		expect(pullResponse.status).toBe(200);
 		expect(seen).toEqual(['issues.opened', 'pull_request.opened']);
+	});
+
+	it('normalizes pull request review comments and their top-level thread id', async () => {
+		const webhook = vi.fn();
+		const github = createGitHubChannel({ webhookSecret: 'secret', webhook });
+		const raw = {
+			action: 'created',
+			repository: { id: 12, name: 'widgets', owner: { login: 'acme' } },
+			sender: { id: 77, login: 'octo-reviewer', type: 'User' },
+			pull_request: { number: 7, title: 'Keep edge auth portable' },
+			comment: {
+				id: 6002,
+				in_reply_to_id: 6001,
+				pull_request_review_id: 7001,
+				body: '@flue-bot can you check this branch?',
+				path: 'src/auth.ts',
+				line: 42,
+			},
+		};
+
+		const response = await channelApp(github).request(
+			await signedRequest({
+				secret: 'secret',
+				event: 'pull_request_review_comment',
+				body: JSON.stringify(raw),
+			}),
+		);
+
+		expect(response.status).toBe(200);
+		expect(webhook.mock.calls[0]?.[0].event).toEqual({
+			type: 'pull_request_review_comment.created',
+			deliveryId: 'delivery-1',
+			hookId: undefined,
+			installationTarget: undefined,
+			installationId: undefined,
+			repository: { id: 12, owner: 'acme', name: 'widgets' },
+			sender: { id: 77, login: 'octo-reviewer', type: 'User' },
+			payload: {
+				pullRequest: { number: 7, title: 'Keep edge auth portable' },
+				comment: {
+					id: 6002,
+					threadId: 6001,
+					reviewId: 7001,
+					body: '@flue-bot can you check this branch?',
+					path: 'src/auth.ts',
+					line: 42,
+				},
+			},
+			raw,
+		});
+	});
+
+	it('uses the comment id as the thread id for a top-level pull request review comment', async () => {
+		const webhook = vi.fn();
+		const github = createGitHubChannel({ webhookSecret: 'secret', webhook });
+
+		const response = await channelApp(github).request(
+			await signedRequest({
+				secret: 'secret',
+				event: 'pull_request_review_comment',
+				body: JSON.stringify({
+					action: 'created',
+					repository: { id: 12, name: 'widgets', owner: { login: 'acme' } },
+					sender: { id: 77, login: 'octo-reviewer', type: 'User' },
+					pull_request: { number: 7, title: 'Keep edge auth portable' },
+					comment: {
+						id: 6001,
+						pull_request_review_id: 7001,
+						body: 'Can this use Web Crypto?',
+						path: 'src/auth.ts',
+						line: 18,
+					},
+				}),
+			}),
+		);
+
+		expect(response.status).toBe(200);
+		expect(webhook.mock.calls[0]?.[0].event).toMatchObject({
+			type: 'pull_request_review_comment.created',
+			payload: {
+				comment: {
+					id: 6001,
+					threadId: 6001,
+				},
+			},
+		});
 	});
 
 	it('forwards unsupported verified deliveries as an explicit unknown event', async () => {
@@ -186,6 +276,24 @@ describe('createGitHubChannel()', () => {
 		expect((await channelApp(invalid).request(await request())).status).toBe(500);
 	});
 
+	it('returns 500 when the handler misses its configured deadline', async () => {
+		const github = createGitHubChannel({
+			webhookSecret: 'secret',
+			handlerTimeoutMs: 5,
+			webhook: () => new Promise(() => {}),
+		});
+
+		const response = await channelApp(github).request(
+			await signedRequest({
+				secret: 'secret',
+				event: 'repository',
+				body: JSON.stringify({ action: 'archived' }),
+			}),
+		);
+
+		expect(response.status).toBe(500);
+	});
+
 	it('rejects missing invalid and changed signatures before invoking the callback', async () => {
 		const webhook = vi.fn();
 		const github = createGitHubChannel({ webhookSecret: 'secret', webhook });
@@ -231,7 +339,8 @@ describe('createGitHubChannel()', () => {
 		const raw = {
 			action: 'created',
 			repository: { id: 12, name: 'widgets', owner: { login: 'acme' } },
-			issue: { number: 42 },
+			sender: { id: 77, login: 'octo-reviewer', type: 'User' },
+			issue: { number: 42, title: 'Review edge support', pull_request: { url: 'unused' } },
 			comment: { id: 99, body: 'Looks good +1' },
 		};
 		const body = new URLSearchParams({ payload: JSON.stringify(raw) }).toString();
@@ -256,7 +365,14 @@ describe('createGitHubChannel()', () => {
 		);
 
 		expect(formResponse.status).toBe(200);
-		expect(webhook.mock.calls[0]?.[0].event.type).toBe('issue_comment.created');
+		expect(webhook.mock.calls[0]?.[0].event).toMatchObject({
+			type: 'issue_comment.created',
+			sender: { id: 77, login: 'octo-reviewer', type: 'User' },
+			payload: {
+				issue: { number: 42, title: 'Review edge support', kind: 'pull_request' },
+				comment: { id: 99, body: 'Looks good +1' },
+			},
+		});
 		expect(oversized.status).toBe(413);
 	});
 
@@ -272,6 +388,16 @@ describe('createGitHubChannel()', () => {
 			},
 		]);
 		expect(webhook).not.toHaveBeenCalled();
+	});
+
+	it('rejects a handler deadline longer than the GitHub response window', () => {
+		expect(() =>
+			createGitHubChannel({
+				webhookSecret: 'secret',
+				handlerTimeoutMs: 9_001,
+				webhook() {},
+			}),
+		).toThrow(TypeError);
 	});
 
 	it('round-trips canonical issue references and rejects foreign keys', () => {

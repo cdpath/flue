@@ -24,6 +24,11 @@ export interface GitHubChannelOptions<E extends Env = Env> {
 	webhookSecret: string;
 	/** Maximum request-body size in bytes. Defaults to 25 MiB. */
 	bodyLimit?: number;
+	/**
+	 * Handler deadline in milliseconds. Defaults to and may not exceed 9000.
+	 * A timed-out handler may continue running after the failure response.
+	 */
+	handlerTimeoutMs?: number;
 	/** Receives every verified non-ping GitHub delivery. */
 	webhook(input: GitHubWebhookHandlerInput<E>): GitHubWebhookHandlerResult;
 }
@@ -41,30 +46,61 @@ export interface GitHubRepositoryRef {
 	name: string;
 }
 
+/** GitHub account that triggered a known webhook event. */
+export interface GitHubUserRef {
+	id: number;
+	login: string;
+	type: 'Bot' | 'User' | 'Organization';
+}
+
+/** Fields normalized from an opened issue. */
 export interface GitHubIssuesOpenedPayload {
 	issue: { number: number; title: string; body: string | null };
 }
 
+/** Fields normalized from a new issue or pull-request conversation comment. */
 export interface GitHubIssueCommentCreatedPayload {
-	issue: { number: number };
+	issue: { number: number; title: string; kind: 'issue' | 'pull_request' };
 	comment: { id: number; body: string };
 }
 
+/** Fields normalized from an opened pull request. */
 export interface GitHubPullRequestOpenedPayload {
 	pullRequest: { number: number; title: string; body: string | null };
+}
+
+/** Fields normalized from an inline pull-request review comment. */
+export interface GitHubPullRequestReviewCommentRef {
+	id: number;
+	/** Top-level review comment id used when replying to this thread. */
+	threadId: number;
+	reviewId: number;
+	body: string;
+	path: string;
+	line: number | null;
+}
+
+/** Fields normalized from a new inline pull-request review comment. */
+export interface GitHubPullRequestReviewCommentCreatedPayload {
+	pullRequest: { number: number; title: string };
+	comment: GitHubPullRequestReviewCommentRef;
 }
 
 export interface GitHubWebhookEvent<TType extends string, TPayload> {
 	type: TType;
 	/** GitHub delivery id. Replays and manual redeliveries retain this value. */
 	deliveryId: string;
+	/** Header-derived hook id. It is metadata, not an authorization capability. */
 	hookId?: string;
+	/** Header-derived installation target. It is metadata, not an authorization capability. */
 	installationTarget?: {
 		id: string;
 		type: string;
 	};
+	/** Installation id from the signed payload when GitHub supplies one. */
 	installationId?: number;
 	repository: GitHubRepositoryRef;
+	sender: GitHubUserRef;
 	payload: TPayload;
 	/** Parsed provider payload. Treat this as untrusted provider data. */
 	raw: unknown;
@@ -77,7 +113,9 @@ export interface GitHubUnknownEvent {
 	/** Provider action when present. */
 	action?: string;
 	deliveryId: string;
+	/** Header-derived hook id. It is metadata, not an authorization capability. */
 	hookId?: string;
+	/** Header-derived installation target. It is metadata, not an authorization capability. */
 	installationTarget?: {
 		id: string;
 		type: string;
@@ -94,6 +132,10 @@ export interface GitHubEvents {
 		GitHubIssueCommentCreatedPayload
 	>;
 	'pull_request.opened': GitHubWebhookEvent<'pull_request.opened', GitHubPullRequestOpenedPayload>;
+	'pull_request_review_comment.created': GitHubWebhookEvent<
+		'pull_request_review_comment.created',
+		GitHubPullRequestReviewCommentCreatedPayload
+	>;
 }
 
 export type GitHubEvent = GitHubEvents[keyof GitHubEvents] | GitHubUnknownEvent;
@@ -133,6 +175,7 @@ export function createGitHubChannel<E extends Env = Env>(
 	const webhookHandler = createGitHubWebhookHandler<E>({
 		webhookSecret,
 		bodyLimit: options.bodyLimit,
+		handlerTimeoutMs: options.handlerTimeoutMs,
 		webhook,
 	});
 

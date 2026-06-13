@@ -23,6 +23,7 @@ construction and runs only for a verified non-ping delivery.
 interface GitHubChannelOptions<E extends Env = Env> {
   webhookSecret: string;
   bodyLimit?: number;
+  handlerTimeoutMs?: number;
   webhook(input: {
     c: Context<E>;
     event: GitHubEvent;
@@ -30,15 +31,17 @@ interface GitHubChannelOptions<E extends Env = Env> {
 }
 ```
 
-| Field           | Description                                     |
-| --------------- | ----------------------------------------------- |
-| `webhookSecret` | Secret configured on the GitHub webhook.        |
-| `bodyLimit`     | Maximum request body in bytes. Default: 25 MiB. |
-| `webhook`       | Receives every verified non-ping delivery.      |
+| Field              | Description                                               |
+| ------------------ | --------------------------------------------------------- |
+| `webhookSecret`    | Secret configured on the GitHub webhook.                  |
+| `bodyLimit`        | Maximum request body in bytes. Default: 25 MiB.           |
+| `handlerTimeoutMs` | Handler deadline. Default and maximum: 9000 milliseconds. |
+| `webhook`          | Receives every verified non-ping delivery.                |
 
 Returning nothing produces an empty `200`. A JSON-compatible value becomes a
 JSON response. An ordinary Hono or Fetch `Response` passes through unchanged.
-Thrown callbacks produce a server error.
+Thrown and timed-out callbacks produce a server error. A timed-out callback
+cannot be forcibly stopped and may continue running after the response.
 
 ## `GitHubChannel`
 
@@ -68,6 +71,7 @@ Known variants:
 - `issues.opened`
 - `issue_comment.created`
 - `pull_request.opened`
+- `pull_request_review_comment.created`
 
 ```ts
 interface GitHubWebhookEvent<TType extends string, TPayload> {
@@ -77,8 +81,39 @@ interface GitHubWebhookEvent<TType extends string, TPayload> {
   installationTarget?: { id: string; type: string };
   installationId?: number;
   repository: GitHubRepositoryRef;
+  sender: GitHubUserRef;
   payload: TPayload;
   raw: unknown;
+}
+```
+
+`issue_comment.created` identifies whether the containing conversation is an
+issue or pull request. `pull_request_review_comment.created` includes the
+comment id, top-level thread id, review id, path, and line.
+
+```ts
+interface GitHubIssueCommentCreatedPayload {
+  issue: {
+    number: number;
+    title: string;
+    kind: 'issue' | 'pull_request';
+  };
+  comment: { id: number; body: string };
+}
+
+interface GitHubPullRequestReviewCommentCreatedPayload {
+  pullRequest: { number: number; title: string };
+  comment: GitHubPullRequestReviewCommentRef;
+}
+
+interface GitHubPullRequestReviewCommentRef {
+  id: number;
+  // Top-level review comment id used when replying to this thread.
+  threadId: number;
+  reviewId: number;
+  body: string;
+  path: string;
+  line: number | null;
 }
 ```
 
@@ -99,7 +134,9 @@ interface GitHubUnknownEvent {
 
 GitHub `ping` is acknowledged internally and does not invoke `webhook`.
 Signatures are checked against exact request bytes before form or JSON parsing.
-The package does not deduplicate `deliveryId`.
+The package does not deduplicate `deliveryId`. Header-derived delivery, hook,
+and installation-target metadata must not be treated as an authorization
+capability.
 
 ## Identity
 
@@ -114,6 +151,12 @@ interface GitHubRepositoryRef {
   id: number;
   owner: string;
   name: string;
+}
+
+interface GitHubUserRef {
+  id: number;
+  login: string;
+  type: 'Bot' | 'User' | 'Organization';
 }
 ```
 

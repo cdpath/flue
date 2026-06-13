@@ -13,13 +13,13 @@ export const channel = createGitHubChannel({
 	// Path: /channels/github/webhook
 	async webhook({ event }) {
 		switch (event.type) {
-			case 'issues.opened':
-			case 'pull_request.opened': {
+			case 'issue_comment.created':
+			case 'pull_request_review_comment.created': {
 				const issue = {
 					owner: event.repository.owner,
 					repo: event.repository.name,
 					issueNumber:
-						event.type === 'issues.opened'
+						event.type === 'issue_comment.created'
 							? event.payload.issue.number
 							: event.payload.pullRequest.number,
 				};
@@ -30,14 +30,12 @@ export const channel = createGitHubChannel({
 						deliveryId: event.deliveryId,
 						installationId: event.installationId,
 						issue,
+						sender: event.sender,
 						title:
-							event.type === 'issues.opened'
+							event.type === 'issue_comment.created'
 								? event.payload.issue.title
 								: event.payload.pullRequest.title,
-						body:
-							event.type === 'issues.opened'
-								? event.payload.issue.body
-								: event.payload.pullRequest.body,
+						comment: event.payload.comment,
 					},
 				});
 				return;
