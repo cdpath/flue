@@ -50,6 +50,7 @@ before(async () => {
 			resend: 'channel--resend.md',
 			shopify: 'channel--shopify.md',
 			intercom: 'channel--intercom.md',
+			zendesk: 'channel--zendesk.md',
 			slack: 'channel--slack.md',
 			discord: 'channel--discord.md',
 			teams: 'channel--teams.md',
@@ -94,6 +95,7 @@ describe('flue add', () => {
 			result.stderr,
 			/flue add intercom\s+channel\s+https:\/\/developers\.intercom\.com/,
 		);
+		assert.match(result.stderr, /flue add zendesk\s+channel\s+https:\/\/developer\.zendesk\.com/);
 		assert.match(result.stderr, /flue add slack\s+channel\s+https:\/\/slack\.com/);
 		assert.match(
 			result.stderr,
@@ -203,6 +205,20 @@ describe('flue add', () => {
 		assert.ok(result.stdout.includes("version: '2.14'"));
 		assert.ok(result.stdout.includes('nodejs_compat'));
 		assert.ok(result.stdout.includes('Never register or modify a live webhook'));
+	});
+
+	it('prints the Zendesk recipe with signed ingress and a ticket-bound Fetch client', async () => {
+		const result = await runCli(['add', 'zendesk', '--print']);
+
+		assert.equal(result.code, 0);
+		assert.ok(result.stdout.includes('@flue/zendesk'));
+		assert.ok(result.stdout.includes('lossless-json@4.3.0'));
+		assert.ok(result.stdout.includes('/channels/zendesk/webhook'));
+		assert.ok(result.stdout.includes('X-Zendesk-Webhook-Signature'));
+		assert.ok(result.stdout.includes('X-Zendesk-Webhook-Signature-Timestamp'));
+		assert.ok(result.stdout.includes('/api/v2/tickets/'));
+		assert.ok(result.stdout.includes('nodejs_compat'));
+		assert.ok(result.stdout.includes('Never create or modify a live webhook'));
 	});
 
 	it('prints the Twilio recipe with the Workers-compatible Fetch path', async () => {

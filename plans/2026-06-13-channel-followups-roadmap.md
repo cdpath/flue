@@ -1276,6 +1276,236 @@ Focused review:
   and API-versioned; and the example proves the shown
   `conversations.find()` SDK path rather than every SDK operation.
 
+### Zendesk implementation — 2026-06-13
+
+Status:
+
+- Complete.
+
+Primary sources:
+
+- Zendesk webhook overview, request anatomy, signature verification, creation,
+  retry, circuit-breaker, webhook API, common event schema, ticket event,
+  Messaging event, API authentication, API-token, OAuth, and Show Ticket
+  documentation.
+- Zendesk's official Node API client guidance, which identifies the available
+  Node package as community maintained rather than officially supported.
+- Current Cloudflare Workers Node.js compatibility, Fetch, Web Crypto, and
+  workerd-testing documentation.
+
+Clean-room affirmation:
+
+- The design and fixtures derive from Zendesk's primary specifications and
+  original synthetic payloads. No third-party adapter implementation, types,
+  fixtures, payloads, snapshots, or tests are being copied or translated.
+
+Eligibility:
+
+- Eligible for Zendesk's signed stateless event-subscription requests.
+  Zendesk sends one JSON event by `POST`, signs the timestamp concatenated
+  directly with the exact body using HMAC-SHA256, and supplies account,
+  webhook, and invocation identity headers.
+- Zendesk documents a 12-second timeout, retry behavior for `409`, `429`,
+  `503`, and timeouts, possible duplicate or omitted delivery, and a
+  circuit-breaker policy. It does not define a timestamp acceptance window or
+  freshness check, so Flue will verify the signed timestamp without inventing
+  replay semantics.
+- Event-subscription payloads have a durable common envelope but an open
+  provider catalog. Ticket events are documented, while Zendesk also directs
+  ordinary ticket-activity integrations toward customizable triggers and
+  automations. The package will preserve future event types and versions
+  rather than claiming complete closed unions.
+- A project-owned Fetch client is the canonical outbound path. Zendesk has no
+  officially supported Node server SDK, while native Fetch and the Node APIs
+  used for Basic authentication execute in Node and Flue's required
+  `nodejs_compat` Workers runtime.
+
+Design:
+
+- Add `@flue/zendesk`, `examples/zendesk-channel`, `flue add zendesk`, a setup
+  guide, and an API reference.
+- Publish fixed `POST /webhook` for signed JSON event subscriptions. Do not
+  publish validation, custom-trigger, Sunshine Conversations, or AI Agent
+  routes in this initial package.
+- Accept `signingSecret`, optional `accountId`, optional `webhookId`,
+  `bodyLimit`, and `handlerTimeoutMs`.
+- Verify `X-Zendesk-Webhook-Signature` against
+  `X-Zendesk-Webhook-Signature-Timestamp + exact body` with Web Crypto before
+  UTF-8 decoding or parsing. Require and expose account, webhook, invocation,
+  and signature-timestamp headers.
+- Parse JSON without rounding unsafe numeric identifiers. Normalize the
+  integer payload `account_id` to a decimal string, require it to match the
+  provider account header, and apply configured account and webhook
+  restrictions before application code runs. The HMAC authenticates the
+  timestamp and body, not the identity headers; header comparisons are
+  consistency checks around an otherwise authenticated delivery.
+- Deliver a typed `ZendeskWebhookEvent` containing delivery metadata plus the
+  provider event id, open type, open schema version, subject, event time,
+  provider-native `detail` and `event` objects, complete parsed envelope, and
+  exact decoded body. Treat the signed event id as the durable deduplication
+  input; unsigned invocation metadata is only for attempt correlation.
+- Expose canonical account-scoped ticket identity helpers. Applications
+  select a validated ticket id only from event families they handle; the
+  package does not claim every Zendesk event refers to a ticket.
+- Apply a complete-route deadline defaulting to and capped at 11 seconds,
+  leaving time before Zendesk's 12-second timeout. Return retryable `409` for
+  channel-owned failure, invalid handler results, and timeout. Do not start
+  the callback if body processing has already exhausted the deadline.
+- Preserve the established result contract: no value becomes empty `200`,
+  JSON-compatible values become JSON, and normal Hono or Fetch responses pass
+  through.
+
+Dependencies and example:
+
+- `@flue/zendesk` depends on Hono and `lossless-json`; it does not depend on a
+  provider SDK or `@flue/runtime`.
+- The editable example exports a narrow project-owned Fetch client, handles
+  selected ticket events with grouped switch cases, dispatches through a
+  canonical account-and-ticket instance id, and defines a ticket-retrieval
+  tool bound to that verified identity. The client uses `lossless-json` so
+  outbound Zendesk identifiers cannot be silently rounded.
+- Trusted application code binds the Zendesk subdomain, account, email, token,
+  and ticket. Model input cannot choose an arbitrary account, host,
+  credential, or ticket.
+- Node and workerd tests will execute the same exported client against
+  fail-closed injected Fetch and prove the exact `GET
+  /api/v2/tickets/{id}.json` request under Flue's canonical `nodejs_compat`
+  configuration.
+
+Non-goals and deferrals:
+
+- Webhook creation, trigger or automation setup, customizable non-JSON
+  payloads, destination Basic/bearer/API-key authentication, OAuth,
+  installation state, token storage, deduplication, replay persistence,
+  ticket workflow policy, or broad outbound support tools.
+- Sunshine Conversations uses a separate unsigned API-key protocol with
+  batching and different retry semantics. It remains a possible future
+  optional route, not part of the initial callback.
+- Zendesk AI Agent webhooks remain deferred because current official
+  documentation does not specify trustworthy inbound authentication, retry,
+  timeout, or delivery identity semantics.
+
+Foundation reflection to revisit after implementation:
+
+- Whether authenticated body identity plus duplicate provider header identity
+  reveals a useful shared validation pattern or should remain
+  provider-specific.
+- Whether lossless normalization of a required numeric tenant id belongs only
+  in Zendesk or exposes broader JSON identity guidance.
+- Whether the open common-envelope contract remains sufficient for both
+  mature ticket events and future event families without a universal schema.
+
+Implementation:
+
+- Added `@flue/zendesk` with one fixed `POST /webhook` route for signed JSON
+  event subscriptions. It verifies HMAC-SHA256 over the exact timestamp and
+  body bytes, requires Zendesk delivery metadata, parses unsafe integer ids
+  losslessly, checks signed body account identity against header metadata,
+  supports optional account and webhook restrictions, preserves open event
+  types and schema versions, and exposes canonical account-scoped ticket
+  identity.
+- Added original Node and workerd protocol suites covering valid and tampered
+  exact bytes, malformed and missing authentication, unsigned metadata
+  mismatch, configured identity restrictions, malformed UTF-8 and JSON,
+  unsafe ids, media type, declared and streamed body limits, future event
+  types, handler results, application failure, cumulative route deadlines,
+  route publication, and ticket-key round trips.
+- Added `examples/zendesk-channel` with a project-owned Fetch client, grouped
+  ticket-event handling, canonical dispatch identity, and a narrow
+  ticket-retrieval tool bound to the selected account and ticket. The client
+  uses `lossless-json` for response parsing so Zendesk ids cannot be silently
+  rounded.
+- Added `flue add zendesk`, the Zendesk connector recipe, setup and API docs,
+  navigation and channel overview entries, README, changelog, lockfile, and
+  publish preparation coverage.
+
+Validation:
+
+- Package build and strict typecheck pass. Thirteen Node ingress tests and
+  three workerd ingress tests pass; workerd executes exact-byte verification,
+  account consistency checks, streamed body limiting, and canonical identity
+  under Flue's required `nodejs_compat` configuration.
+- Example strict typecheck passes. Two Node client tests and one workerd client
+  test execute the project-owned client against fail-closed fake Fetch and
+  preserve unsafe identifiers. Node and Cloudflare target builds pass.
+- A built Node application returned `200` for an original locally signed
+  event and `401` for a changed body with the original signature.
+- The generated full Flue Cloudflare Worker ran under Wrangler's local workerd
+  runtime with its real `nodejs_compat` configuration. An original signed
+  future event returned `200`, and the same signature over a changed body
+  returned `401`.
+- The full CLI suite passes: 56 Node tests and 24 Vitest tests. The generated
+  connector index lists Zendesk, the built CLI prints the intended recipe,
+  and the connector website build serves `/cli/connectors/zendesk.md`.
+- Documentation check and production build pass with zero diagnostics and
+  generate the Zendesk guide and API reference.
+- Publish preparation and packing pass. The tarball contains 101 intended
+  distribution, prepared documentation, README, license, and manifest files.
+  A clean strict TypeScript consumer compiles and imports the packed package,
+  and a separate packed-package workerd consumer executes signed verification
+  with `nodejs_compat`.
+- Focused Biome, Prettier, whitespace, and credential-pattern checks pass. The
+  repository lint gate completes with unrelated existing warnings. No test or
+  build contacted Zendesk.
+
+Corrections and deviations:
+
+- Zendesk's signature covers the timestamp and exact body, but not the account,
+  webhook, or invocation headers. Public types and docs now distinguish signed
+  payload identity from unsigned provider routing metadata. Payload
+  `account_id` must match the account header; configured account and webhook
+  checks are additional consistency restrictions, not claims that the HMAC
+  independently authenticates those headers.
+- Zendesk retries `409`, while generic `500` behavior is not part of its
+  documented retry contract. Channel-owned application failures, invalid
+  handler results, and route timeouts therefore return `409`. Explicit
+  application `Response` values still pass through unchanged.
+- The complete-route deadline now checks elapsed processing before invoking
+  the application callback. If receipt, verification, parsing, or identity
+  checks consume the deadline, application work is not started.
+- The example client initially used ordinary JSON response parsing. Zendesk
+  identifiers can exceed JavaScript's safe integer range, so the final client
+  uses `lossless-json` and validates the returned ticket shape without
+  rounding ids.
+- Zendesk's documentation is inconsistent about whether event subscriptions
+  are broadly available for ticket activity or whether integrations should
+  use customizable triggers and automations. The package targets only the
+  provider-defined JSON event-subscription envelope and documents the
+  ambiguity instead of pretending custom payloads have the same contract.
+- Cloudflare compatibility assumes Flue's canonical `nodejs_compat`
+  configuration. The example may use `Buffer` for Basic authentication;
+  actual Node and workerd execution, not avoidance of supported Node APIs, is
+  the compatibility gate.
+
+Foundation reflection:
+
+- Signed body identity plus unsigned duplicate header metadata is
+  provider-specific. It does not justify a shared identity-validation
+  abstraction because providers differ on which fields their signatures
+  cover and what consistency checks are meaningful.
+- Lossless JSON parsing is required where provider-defined numeric identifiers
+  can exceed JavaScript's safe range. This is useful cross-provider guidance,
+  but parser choice and normalization remain local to each provider contract.
+- The open common-envelope contract preserves future Zendesk event types
+  without inventing a universal event schema. Typed delivery metadata and
+  canonical ticket identity remain useful while applications validate the
+  provider-native fields for the event families they handle.
+- Fixed discovery, the single-object callback, normal response passthrough,
+  project-owned clients and tools, and the `nodejs_compat` workerd gate all
+  held. No shared runtime machinery change is justified.
+
+Focused review:
+
+- One independent review identified concrete gaps in signed-versus-unsigned
+  identity documentation, Zendesk-specific retry responses, callback admission
+  after pre-handler timeout, and lossless outbound response parsing. Each was
+  corrected and covered before the final pack and runtime checks.
+- Residual risks are provider-owned or intentionally deferred: Zendesk
+  specifies no signature freshness window; delivery can be duplicated or
+  omitted; header metadata is not independently signed; event-subscription
+  availability is documentation-dependent; and already-started JavaScript
+  cannot be forcibly cancelled after a timeout.
+
 ## 6. Keep These As Separate Product Decisions
 
 ### Generic HTTP or webhook adapter

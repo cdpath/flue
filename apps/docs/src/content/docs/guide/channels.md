@@ -14,6 +14,7 @@ your application decide what happens next. Flue provides ingress packages for:
 | Resend      | `@flue/resend`      | `/channels/<file>/webhook`                                                              |
 | Shopify     | `@flue/shopify`     | `/channels/<file>/webhook`                                                              |
 | Intercom    | `@flue/intercom`    | `/channels/<file>/webhook` (`HEAD`, `POST`)                                             |
+| Zendesk     | `@flue/zendesk`     | `/channels/<file>/webhook`                                                              |
 | Slack       | `@flue/slack`       | `/channels/<file>/events`, `/channels/<file>/interactions`, `/channels/<file>/commands` |
 | Discord     | `@flue/discord`     | `/channels/<file>/interactions`                                                         |
 | Teams       | `@flue/teams`       | `/channels/<file>/activities`                                                           |
@@ -39,6 +40,7 @@ flue add notion --print | codex
 flue add resend --print | codex
 flue add shopify --print | codex
 flue add intercom --print | codex
+flue add zendesk --print | codex
 flue add slack --print | codex
 flue add discord --print | codex
 flue add teams --print | codex
@@ -70,6 +72,7 @@ See the provider guides for [GitHub](/docs/guide/channels/github/),
 [Resend](/docs/guide/channels/resend/),
 [Shopify](/docs/guide/channels/shopify/),
 [Intercom](/docs/guide/channels/intercom/),
+[Zendesk](/docs/guide/channels/zendesk/),
 [Slack](/docs/guide/channels/slack/),
 [Discord](/docs/guide/channels/discord/),
 [Microsoft Teams](/docs/guide/channels/teams/),
@@ -93,6 +96,7 @@ src/channels/resend.ts  -> /channels/resend/webhook
 src/channels/shopify.ts -> /channels/shopify/webhook
 src/channels/intercom.ts
                          -> /channels/intercom/webhook (HEAD, POST)
+src/channels/zendesk.ts  -> /channels/zendesk/webhook
 src/channels/slack.ts   -> /channels/slack/events
                           /channels/slack/interactions
                           /channels/slack/commands
@@ -221,6 +225,7 @@ Channel packages are stateless and do not deduplicate deliveries.
 | Resend                  | Delivery is at least once; use `svix-id` for application-owned deduplication.  |
 | Shopify                 | Retries run for four hours; deduplicate with the webhook id.                   |
 | Intercom                | Failed delivery retries once; use notification id for application dedupe.      |
+| Zendesk                 | Selected failures and timeouts retry; deduplicate with the signed event id.    |
 | Slack Events API        | Slack may retry and supplies retry metadata.                                   |
 | Slack interactivity     | Requires a prompt acknowledgement and is not a dependable retry queue.         |
 | Discord interactions    | Failures are user-visible and do not provide dependable redelivery.            |

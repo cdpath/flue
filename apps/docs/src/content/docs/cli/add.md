@@ -53,6 +53,7 @@ flue add notion --print | codex
 flue add resend --print | codex
 flue add shopify --print | codex
 flue add intercom --print | codex
+flue add zendesk --print | codex
 flue add slack --print | codex
 flue add discord --print | codex
 flue add teams --print | codex
