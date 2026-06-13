@@ -13,6 +13,7 @@ your application decide what happens next. Flue provides ingress packages for:
 | Notion      | `@flue/notion`      | `/channels/<file>/webhook`                                                              |
 | Resend      | `@flue/resend`      | `/channels/<file>/webhook`                                                              |
 | Shopify     | `@flue/shopify`     | `/channels/<file>/webhook`                                                              |
+| Intercom    | `@flue/intercom`    | `/channels/<file>/webhook` (`HEAD`, `POST`)                                             |
 | Slack       | `@flue/slack`       | `/channels/<file>/events`, `/channels/<file>/interactions`, `/channels/<file>/commands` |
 | Discord     | `@flue/discord`     | `/channels/<file>/interactions`                                                         |
 | Teams       | `@flue/teams`       | `/channels/<file>/activities`                                                           |
@@ -37,6 +38,7 @@ flue add stripe --print | codex
 flue add notion --print | codex
 flue add resend --print | codex
 flue add shopify --print | codex
+flue add intercom --print | codex
 flue add slack --print | codex
 flue add discord --print | codex
 flue add teams --print | codex
@@ -67,6 +69,7 @@ See the provider guides for [GitHub](/docs/guide/channels/github/),
 [Notion](/docs/guide/channels/notion/),
 [Resend](/docs/guide/channels/resend/),
 [Shopify](/docs/guide/channels/shopify/),
+[Intercom](/docs/guide/channels/intercom/),
 [Slack](/docs/guide/channels/slack/),
 [Discord](/docs/guide/channels/discord/),
 [Microsoft Teams](/docs/guide/channels/teams/),
@@ -88,6 +91,8 @@ src/channels/stripe.ts  -> /channels/stripe/webhook
 src/channels/notion.ts  -> /channels/notion/webhook
 src/channels/resend.ts  -> /channels/resend/webhook
 src/channels/shopify.ts -> /channels/shopify/webhook
+src/channels/intercom.ts
+                         -> /channels/intercom/webhook (HEAD, POST)
 src/channels/slack.ts   -> /channels/slack/events
                           /channels/slack/interactions
                           /channels/slack/commands
@@ -215,6 +220,7 @@ Channel packages are stateless and do not deduplicate deliveries.
 | Stripe                  | Failed live deliveries retry for up to three days; ordering is not guaranteed. |
 | Resend                  | Delivery is at least once; use `svix-id` for application-owned deduplication.  |
 | Shopify                 | Retries run for four hours; deduplicate with the webhook id.                   |
+| Intercom                | Failed delivery retries once; use notification id for application dedupe.      |
 | Slack Events API        | Slack may retry and supplies retry metadata.                                   |
 | Slack interactivity     | Requires a prompt acknowledgement and is not a dependable retry queue.         |
 | Discord interactions    | Failures are user-visible and do not provide dependable redelivery.            |
@@ -239,7 +245,7 @@ logs, dispatched input, and durable session history.
 ## Targets
 
 The first-party ingress packages use Fetch and Web Crypto and are tested on
-Node and workerd. Outbound SDK compatibility is separate: validate the SDK and
-operations selected by your application against its actual target. Recipes may
-choose a narrower Fetch client when a provider's Node SDK is not suitable for
-Cloudflare.
+Node and workerd. Flue Cloudflare builds require `nodejs_compat`, so recipes may
+use SDKs whose required Node APIs are implemented there. Outbound compatibility
+is still operation-specific: execute the selected client path in workerd rather
+than treating a successful bundle as proof.

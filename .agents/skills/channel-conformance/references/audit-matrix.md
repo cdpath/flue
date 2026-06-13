@@ -141,7 +141,8 @@ equivalent. Follow the repository's dependency build order.
 - Install the tarball into a clean strict TypeScript consumer.
 - Typecheck a custom Hono environment and import the constructor at runtime.
 - Confirm no accidental `@flue/runtime` or provider SDK runtime dependency.
-- Confirm every declared runtime dependency is available and Workers-safe.
+- Confirm every declared runtime dependency executes under Flue's required
+  Workers `nodejs_compat` configuration and does not call unsupported stubs.
 
 ## Security And Quality Review
 

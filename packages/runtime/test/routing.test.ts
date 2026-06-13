@@ -50,6 +50,37 @@ describe('flue()', () => {
 		});
 	});
 
+	it('serves an explicit channel HEAD route with the original request method', async () => {
+		const handler = vi.fn(async (c) => {
+			expect(c.req.method).toBe('HEAD');
+			return new Response(null, {
+				status: 204,
+				headers: { 'x-endpoint-validation': 'accepted' },
+			});
+		});
+		configureFlueRuntime({
+			target: 'node',
+			manifest: { agents: [] },
+			channelHandlers: {
+				intercom: {
+					'HEAD /webhook': handler,
+				},
+			},
+		});
+		const app = new Hono();
+		app.route('/api', flue());
+
+		const response = await app.fetch(
+			new Request('http://localhost/api/channels/intercom/webhook', {
+				method: 'HEAD',
+			}),
+		);
+
+		expect(response.status).toBe(204);
+		expect(response.headers.get('x-endpoint-validation')).toBe('accepted');
+		expect(handler).toHaveBeenCalledOnce();
+	});
+
 	it('returns method_not_allowed for a configured channel path with the wrong method', async () => {
 		configureFlueRuntime({
 			target: 'node',

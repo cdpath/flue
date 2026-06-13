@@ -27,6 +27,9 @@ Scope decisions confirmed after implementation:
   receipt and response. App installation and lifecycle management remain
   outside the core even when a provider commonly pairs them with webhooks.
 - Require Node and Cloudflare Workers execution for every canonical path.
+- Treat Flue's required `nodejs_compat` configuration as the canonical
+  Cloudflare runtime. Node API usage is acceptable when Cloudflare implements
+  the required behavior; actual workerd execution remains mandatory.
 - Add provider-specific behavior only when official protocol semantics justify
   it. Do not introduce a universal event schema, outbound client, or tool set.
 - Do not add a provider whose useful ingress requires a socket, polling loop,
@@ -177,6 +180,18 @@ directory highlights inbound email through Resend as a useful platform class.
   event semantics, retries, and any provider-required response behavior.
 - Defer if a trustworthy inbound path requires a long-lived integration
   service rather than developer-owned setup plus stateless webhooks.
+
+### Salesforce
+
+- Research Salesforce's current stateless HTTP delivery surfaces separately
+  from Pub/Sub API, Change Data Capture, and other long-lived event streams.
+- Identify whether an official authenticated webhook mechanism provides useful
+  provider-native events, delivery identity, retry semantics, and stable
+  organization and resource identity without requiring Flue to own Salesforce
+  installation or subscription lifecycle.
+- Implement only if the canonical ingress and an application-owned outbound
+  client both execute reliably in Node and Cloudflare Workers. Otherwise
+  record the eligible subsets or transport blocker and defer the channel.
 
 Research these one at a time. A provider being popular is not enough to relax
 the HTTP, clean-room, or Cloudflare gates.
@@ -1035,6 +1050,232 @@ Focused review:
 - No unresolved correctness, security, packaging, Cloudflare, or developer
   experience findings remain.
 
+### Intercom implementation — 2026-06-13
+
+Status:
+
+- Complete.
+
+Primary sources:
+
+- Intercom webhook overview, endpoint setup, notification delivery, v2.15
+  topic, signature, conversation, ticket, authentication, and REST API
+  documentation.
+- Official `intercom-client` v7.0.3 package metadata, declarations, and
+  runtime artifacts.
+- Current Cloudflare Workers Node.js compatibility, Web Crypto, and
+  workerd-testing documentation.
+
+Clean-room affirmation:
+
+- The design and future fixtures derive from Intercom's primary
+  specifications and original synthetic payloads. No third-party adapter
+  implementation, types, fixtures, payloads, snapshots, or tests are being
+  copied or translated.
+
+Eligibility:
+
+- Eligible for ordinary stateless HTTPS webhook delivery. Intercom validates
+  the configured URL with an unsigned `HEAD`, then sends one signed JSON
+  notification per `POST`.
+- Intercom signs the exact request body with HMAC-SHA1 and the developer app
+  client secret in `X-Hub-Signature`. It supplies no signed timestamp or
+  replay window.
+- Intercom documents a five-second response deadline, higher priority for
+  responses within 500ms, unordered and duplicate delivery, one retry after
+  one minute for ordinary failures, subscription disabling on `410`, and
+  throttling on `429`.
+- Official documentation conflicts between accepting any `2xx` and requiring
+  exactly `200` to avoid redelivery. The normal no-value and JSON channel
+  results produce `200`; documentation will warn that custom success statuses
+  may not acknowledge reliably.
+- The official SDK is Fetch-injectable and dependency-free. Its limited Node
+  global usage is acceptable under Flue's required `nodejs_compat`; actual SDK
+  execution in workerd remains required before completion.
+
+Design:
+
+- Add `@flue/intercom`, `examples/intercom-channel`,
+  `flue add intercom`, a setup guide, and an API reference.
+- Publish fixed `HEAD /webhook` and `POST /webhook` routes. `HEAD` returns an
+  empty `200` for Intercom's endpoint check and does not invoke application
+  code.
+- Accept `clientSecret`, optional `workspaceId`, `bodyLimit`, and
+  `handlerTimeoutMs`.
+- Verify exact raw bytes with Web Crypto before UTF-8 decoding or parsing.
+  Require `application/json` and the documented `sha1=<hex>` signature.
+- Deliver a typed `IntercomWebhookEvent` with the provider topic, workspace
+  id from `app_id`, nullable notification id, timestamps, attempt count,
+  provider-native JSON item, optional self URL, and complete parsed envelope.
+- Preserve every verified topic, including `ping` and future topics. Payload
+  schemas are deliberately JSON-typed because the catalog is broad,
+  API-versioned, deletion topics are intentionally minimal, and several
+  topics have exceptional wrappers.
+- Expose canonical workspace-scoped conversation identity helpers. Intercom
+  explicitly warns that resource ids are not globally unique. Do not infer a
+  conversation from every event; the application supplies a verified
+  conversation id from the topic payload it handles.
+- Apply a complete-route deadline defaulting to and capped at 4500ms across
+  body receipt, verification, parsing, and the application callback.
+- Preserve the established result contract: no value becomes empty `200`,
+  JSON-compatible values become JSON, and ordinary Hono or Fetch responses
+  pass through.
+
+Dependencies and example:
+
+- `@flue/intercom` depends only on Hono and Web Crypto. It does not depend on
+  the provider SDK or `@flue/runtime`.
+- The editable example exports the official `intercom-client`, handles
+  contact-initiated and contact-replied conversation topics, dispatches
+  through a canonical workspace-and-conversation instance id, and defines a
+  narrow tool bound to the selected conversation.
+- Trusted application code binds the Intercom token, API version, workspace,
+  and conversation. Model input cannot select arbitrary workspaces,
+  credentials, or API destinations.
+- Node and workerd tests will execute the same exported SDK client factory
+  against fail-closed injected Fetch under Flue's canonical
+  `nodejs_compat` configuration.
+
+Non-goals:
+
+- App installation, OAuth, permission selection, workspace token lookup,
+  webhook subscription setup, IP allowlist synchronization, deduplication,
+  replay persistence, inbox policy, ticket workflows, or broad outbound
+  support tools.
+- Polling, long-lived transports, a closed union for every topic, or claims
+  that top-level metadata has replay protection.
+
+Foundation reflection to revisit after implementation:
+
+- Whether the first package with a required unsigned `HEAD` validation route
+  reveals any route-discovery or testing assumption.
+- Whether open provider-native item typing plus typed delivery metadata is
+  the right contract for broad, versioned catalogs.
+- Whether relying on Flue's canonical `nodejs_compat` meaningfully simplifies
+  future official-client selection without weakening the workerd execution
+  gate.
+
+Implementation:
+
+- Added `@flue/intercom` with fixed `HEAD /webhook` endpoint validation and
+  signed `POST /webhook` notification delivery, exact-byte Web Crypto
+  HMAC-SHA1 verification, optional workspace restriction, body limiting, a
+  complete-route deadline, open versioned topics, typed delivery metadata,
+  raw verified input, and canonical workspace-scoped conversation identity.
+- Added original Node and workerd protocol suites. They cover exact bytes,
+  endpoint validation, ping and future topics, workspace mismatch, missing,
+  malformed, and incorrect signatures, malformed envelopes, UTF-8 and JSON
+  failures, media type, declared and streamed body limits, handler result
+  serialization, invalid results, thrown handlers, cumulative route timeout,
+  constructor validation, route publication, and conversation-key round
+  trips.
+- Added `examples/intercom-channel` with the official
+  `intercom-client@7.0.3`, explicit API version `2.14`, trusted US/EU/AU
+  region selection, grouped contact-initiated and contact-replied handling,
+  canonical dispatch identity, a conversation-bound retrieval tool, and Node
+  and workerd fail-closed SDK tests.
+- Added `flue add intercom`, the Intercom connector recipe, setup and API
+  docs, navigation and channel overview entries, README, changelog, lockfile,
+  and publish preparation coverage.
+- Added a focused runtime regression proving that an explicit discovered
+  channel `HEAD` route receives the original request method through a mounted
+  `flue()` application.
+- Updated the channel-conformance skill and audit matrix to treat Flue's
+  required `nodejs_compat` configuration as the canonical Cloudflare runtime.
+  Node API use is acceptable when Cloudflare implements the required behavior;
+  unsupported stubs and failed workerd execution still fail the gate.
+
+Validation:
+
+- Package build, strict typecheck, eleven Node tests, and two workerd ingress
+  tests pass. Workerd executes exact-byte HMAC-SHA1 verification, the unsigned
+  endpoint-validation route, future-topic delivery, and streamed body
+  limiting with `nodejs_compat`.
+- Example strict typecheck, Node official-client test, workerd official-client
+  test, Node build, and Cloudflare target build pass. Both client tests execute
+  the same exported factory with injected fail-closed Fetch; workerd observes
+  the official SDK's `X-Fern-Runtime: workerd` header and Cloudflare-provided
+  `process` and `Buffer`.
+- A built Node application returned `200` for `HEAD`, returned an empty `200`
+  for an original locally signed future topic, and returned `401` when the
+  same signature accompanied a changed body.
+- The generated full Flue Cloudflare Worker was started through Wrangler's
+  local workerd runtime with its real `nodejs_compat` configuration and bound
+  environment variables. The same discovered `HEAD`, valid signed `POST`, and
+  tampered `POST` requests returned `200`, `200`, and `401`.
+- The focused mounted-runtime routing suite passes all 33 tests, including the
+  explicit `HEAD` regression, and runtime strict types pass.
+- The full CLI suite passes: 55 Node tests and 24 Vitest tests. The generated
+  connector index lists Intercom, the built CLI prints the intended recipe,
+  and the connector website build serves `/cli/connectors/intercom.md`.
+- Documentation check and production build pass with zero diagnostics and
+  generate the Intercom guide and API reference.
+- Publish preparation and package packing pass. The tarball contains 99
+  intended distribution, prepared documentation, README, license, and
+  manifest files, with no source, tests, build configuration, or
+  `node_modules`.
+- A clean strict TypeScript consumer installed only the packed
+  `@flue/intercom` package and TypeScript, compiled a custom Hono environment,
+  imported the constructor at runtime, and exercised canonical identity.
+- A separate clean workerd consumer installed the packed package and executed
+  signed notification verification under `nodejs_compat`.
+- Focused Biome, Prettier, whitespace, and credential-pattern checks pass.
+  The repository lint gate completes with unrelated existing warnings in
+  runtime, Postgres, Notion, and CLI files. No Intercom test or build contacted
+  Intercom.
+
+Corrections and deviations:
+
+- Direct Hono test applications transform `HEAD` dispatch through `GET`, so a
+  naive `app.on('HEAD', ...)` package harness returned `404` even though Flue's
+  channel dispatcher preserves the original method. The provider tests now
+  mirror channel dispatch, and a mounted-runtime regression proves the actual
+  discovered route. No runtime routing code change was necessary.
+- The official SDK's latest installable npm release is `7.0.3` and its
+  generated REST API version surface ends at `2.14`, while current webhook
+  documentation is `2.15`. The example pins both the package and API version
+  instead of sending an unsupported raw `2.15` header. Webhook items remain
+  open and version-tolerant.
+- Earlier provider work treated execution without `nodejs_compat` as a
+  desirable stricter gate. Flue already requires and configures
+  `nodejs_compat`, and Cloudflare implements the `process` behavior used by the
+  official Intercom SDK. The conformance policy now validates the real Flue
+  environment instead of working around supported Node APIs.
+- Documentation review called out invalid UTF-8 as a claimed failure mode.
+  Exact-byte signed invalid UTF-8 coverage was added before accepting that
+  claim.
+
+Foundation reflection:
+
+- Required unsigned `HEAD` validation fits the existing route declaration and
+  discovery model. It did reveal that direct Hono test mounting is not a
+  faithful harness for explicit `HEAD` routes, so the shared mounted-runtime
+  regression is warranted. No public routing abstraction or implementation
+  change is needed.
+- Open provider-native item typing is the honest contract for Intercom's broad
+  API-versioned topic catalog. Typed workspace, notification, timing, and
+  attempt metadata still provide a useful durable envelope without publishing
+  false per-topic guarantees.
+- Flue's canonical `nodejs_compat` environment makes the official SDK the
+  strongest example client and avoids an unnecessary custom Fetch wrapper.
+  Actual SDK execution in workerd remains the meaningful compatibility gate.
+- Fixed discovery, multi-method route suffixes, the single-object callback,
+  normal response handling, project-owned clients and tools, and canonical
+  conversation identity all held. No additional shared machinery is
+  justified.
+
+Focused review:
+
+- One focused independent review found no concrete correctness, security,
+  provider protocol, Hono routing, timeout or body handling, type-contract,
+  Cloudflare, SDK example, packaging, documentation, recipe, or durable test
+  gap.
+- Residual risks are provider-owned or explicitly documented: Intercom has no
+  signed timestamp or replay window; its acknowledgment documentation
+  conflicts between exactly `200` and any `2xx`; topic payloads remain broad
+  and API-versioned; and the example proves the shown
+  `conversations.find()` SDK path rather than every SDK operation.
+
 ## 6. Keep These As Separate Product Decisions
 
 ### Generic HTTP or webhook adapter
@@ -1070,8 +1311,8 @@ declarations.
 
 1. Release and deploy the completed ten-provider work.
 2. Add the channel implementation and conformance agent skill.
-3. Research Stripe, Notion, Resend, Shopify, Intercom, and Zendesk one at a
-   time, shipping only after the HTTP and Cloudflare gates are proven.
+3. Research Stripe, Notion, Resend, Shopify, Intercom, Zendesk, and Salesforce
+   one at a time, shipping only after the HTTP and Cloudflare gates are proven.
 4. Reassess existing HTTP provider expansions from user demand after the first
    channel release has real adoption data.
 

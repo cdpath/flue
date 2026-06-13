@@ -159,9 +159,10 @@ Prove:
 - Node and Cloudflare example builds.
 
 Do not claim Cloudflare support from bundling alone. Execute the verification
-path and canonical example client in workerd. Use `nodejs_compat` only when the
-dependency is intentionally supported there and actual workerd execution
-passes.
+path and canonical example client in workerd with Flue's required
+`nodejs_compat` configuration. Node API usage is acceptable when Cloudflare
+implements the required behavior, but imports backed only by non-functional
+compatibility stubs are not. Actual workerd execution remains the gate.
 
 ## Audit Artifacts And Developer Surfaces
 

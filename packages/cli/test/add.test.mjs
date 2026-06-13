@@ -49,6 +49,7 @@ before(async () => {
 			notion: 'channel--notion.md',
 			resend: 'channel--resend.md',
 			shopify: 'channel--shopify.md',
+			intercom: 'channel--intercom.md',
 			slack: 'channel--slack.md',
 			discord: 'channel--discord.md',
 			teams: 'channel--teams.md',
@@ -89,6 +90,10 @@ describe('flue add', () => {
 		assert.match(result.stderr, /flue add notion\s+channel\s+https:\/\/developers\.notion\.com/);
 		assert.match(result.stderr, /flue add resend\s+channel\s+https:\/\/resend\.com/);
 		assert.match(result.stderr, /flue add shopify\s+channel\s+https:\/\/shopify\.dev/);
+		assert.match(
+			result.stderr,
+			/flue add intercom\s+channel\s+https:\/\/developers\.intercom\.com/,
+		);
 		assert.match(result.stderr, /flue add slack\s+channel\s+https:\/\/slack\.com/);
 		assert.match(
 			result.stderr,
@@ -184,6 +189,20 @@ describe('flue add', () => {
 		assert.ok(result.stdout.includes('customFetchApi'));
 		assert.ok(result.stdout.includes('without `nodejs_compat`'));
 		assert.ok(result.stdout.includes('Never register a live webhook'));
+	});
+
+	it('prints the Intercom recipe with endpoint validation and the official SDK', async () => {
+		const result = await runCli(['add', 'intercom', '--print']);
+
+		assert.equal(result.code, 0);
+		assert.ok(result.stdout.includes('@flue/intercom'));
+		assert.ok(result.stdout.includes('intercom-client@7.0.3'));
+		assert.ok(result.stdout.includes('/channels/intercom/webhook'));
+		assert.ok(result.stdout.includes('HEAD'));
+		assert.ok(result.stdout.includes('X-Hub-Signature'));
+		assert.ok(result.stdout.includes("version: '2.14'"));
+		assert.ok(result.stdout.includes('nodejs_compat'));
+		assert.ok(result.stdout.includes('Never register or modify a live webhook'));
 	});
 
 	it('prints the Twilio recipe with the Workers-compatible Fetch path', async () => {
