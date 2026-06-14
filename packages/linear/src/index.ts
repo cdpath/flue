@@ -80,7 +80,7 @@ export interface LinearWebhookHandlerInput<E extends Env = Env> {
 	 * exposed for application-owned deduplication. Linear signs the body, not
 	 * this transport header, and the channel does not deduplicate.
 	 */
-	deliveryId?: string;
+	deliveryId: string;
 }
 
 /** Verified Linear ingress and canonical identity helpers. */

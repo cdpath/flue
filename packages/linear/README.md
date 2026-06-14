@@ -20,7 +20,8 @@ Place this export in `channels/linear.ts`. Flue discovers it and serves
 
 The package verifies the exact request bytes with HMAC-SHA256, rejects webhook
 timestamps outside Linear's recommended one-minute window, and optionally
-checks fixed organization and webhook ids. It then forwards the provider-native
+checks fixed organization and webhook ids, and requires a UUID-v4
+`Linear-Delivery` header. It then forwards the provider-native
 `payload`, typed by Linear's official `LinearWebhookPayload` union (re-exported
 from `@linear/sdk/webhooks`), unmodified — including verified deliveries the
 union does not model. The application switches on Linear's own `type` and

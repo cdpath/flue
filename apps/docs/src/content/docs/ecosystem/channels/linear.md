@@ -197,8 +197,8 @@ seconds, then retries after one minute, one hour, and six hours. The channel
 does not enforce a timer; admit durable work quickly (dispatch, then return) and
 rely on idempotency rather than blocking on slow work before responding.
 
-The channel exposes `Linear-Delivery` for application-owned deduplication but
-does not persist delivery state. Conversation keys validate syntax, not
-authorization.
+The channel requires Linear's UUID-v4 `Linear-Delivery` header and exposes it
+for application-owned deduplication, but does not persist delivery state.
+Conversation keys validate syntax, not authorization.
 
 See the [`@flue/linear` API reference](/docs/api/linear-channel/).

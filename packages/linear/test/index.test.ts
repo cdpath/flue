@@ -46,7 +46,7 @@ describe('createLinearChannel()', () => {
 
 		const response = await channelApp(linear).request(
 			await signedRequest('linear-secret', body, {
-				'linear-delivery': 'delivery-moss',
+				'linear-delivery': 'cd95eec6-75f7-4b1b-9d77-10bb1bb7c22f',
 				'linear-event': 'Comment',
 			}),
 		);
@@ -55,7 +55,7 @@ describe('createLinearChannel()', () => {
 		expect(webhook).toHaveBeenCalledOnce();
 		const input = webhook.mock.calls[0]?.[0];
 		expect(input.c).toBeTypeOf('object');
-		expect(input.deliveryId).toBe('delivery-moss');
+		expect(input.deliveryId).toBe('cd95eec6-75f7-4b1b-9d77-10bb1bb7c22f');
 		expect(input.payload).toEqual(raw);
 	});
 
@@ -229,6 +229,34 @@ describe('createLinearChannel()', () => {
 		expect(alteredResponse.status).toBe(401);
 		expect(staleResponse.status).toBe(401);
 		expect(futureResponse.status).toBe(401);
+		expect(webhook).not.toHaveBeenCalled();
+	});
+
+	it('rejects missing or malformed delivery ids before invoking the callback', async () => {
+		const webhook = vi.fn();
+		const app = channelApp(createLinearChannel({ webhookSecret: 'secret', webhook }));
+		const body = JSON.stringify(
+			entityPayload({
+				type: 'Issue',
+				action: 'create',
+				data: { id: 'issue-delivery', identifier: 'OPS-3', title: 'Delivery identity' },
+			}),
+		);
+		const missing = await signedRequest('secret', body);
+		missing.headers.delete('linear-delivery');
+
+		const responses = await Promise.all([
+			app.request(missing),
+			app.request(await signedRequest('secret', body, { 'linear-delivery': '' })),
+			app.request(await signedRequest('secret', body, { 'linear-delivery': 'not-a-uuid' })),
+			app.request(
+				await signedRequest('secret', body, {
+					'linear-delivery': 'a725f8c8-a47c-11ee-97b6-5c22f1c6474a',
+				}),
+			),
+		]);
+
+		expect(responses.map((response) => response.status)).toEqual([400, 400, 400, 400]);
 		expect(webhook).not.toHaveBeenCalled();
 	});
 
@@ -473,6 +501,7 @@ async function signedRequest(
 		headers: {
 			'content-type': 'application/json; charset=utf-8',
 			'linear-signature': await hmac(secret, body),
+			'linear-delivery': 'a725f8c8-a47c-4db7-97b6-5c22f1c6474a',
 			...headers,
 		},
 		body,

@@ -46,12 +46,13 @@ export function createLinearWebhookHandler<E extends Env>(
 			return response(403);
 		}
 
-		const deliveryId = request.headers.get('linear-delivery') ?? undefined;
+		const deliveryId = request.headers.get('linear-delivery');
+		if (!deliveryId || !isUuidV4(deliveryId)) return response(400);
 		return serializeHandlerResult(
 			await options.webhook({
 				c,
 				payload: raw as unknown as LinearWebhookPayload,
-				...(deliveryId === undefined ? {} : { deliveryId }),
+				deliveryId,
 			}),
 		);
 	};
@@ -145,6 +146,10 @@ function parseJson(body: Uint8Array): unknown {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isUuidV4(value: string): boolean {
+	return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function response(status: number): Response {

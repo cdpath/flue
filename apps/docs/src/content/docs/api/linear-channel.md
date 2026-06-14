@@ -63,14 +63,14 @@ Conversation keys are canonical identifiers, not authorization capabilities.
 interface LinearWebhookHandlerInput<E extends Env = Env> {
   c: Context<E>;
   payload: LinearWebhookPayload;
-  deliveryId?: string;
+  deliveryId: string;
 }
 ```
 
 `payload` is the verified provider-native body. `deliveryId` comes from the
-`Linear-Delivery` header — a UUID exposed for application-owned deduplication.
-Linear signs the body, not that transport header, and the channel does not
-deduplicate.
+required `Linear-Delivery` header. The channel rejects a missing or malformed
+UUID-v4 value before invoking the callback. Linear signs the body, not that
+transport header, and the channel does not deduplicate.
 
 ## `LinearWebhookPayload`
 

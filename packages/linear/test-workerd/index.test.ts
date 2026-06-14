@@ -15,7 +15,7 @@ describe('@flue/linear workerd ingress', () => {
 		const headers = {
 			'content-type': 'application/json',
 			'linear-signature': signature,
-			'linear-delivery': 'delivery-worker',
+			'linear-delivery': 'f36065f1-60c5-40e5-aef3-eaf3e734383f',
 		};
 
 		const response = await app.request(
@@ -28,12 +28,20 @@ describe('@flue/linear workerd ingress', () => {
 				body: body.replace('Worker route', 'Node route'),
 			}),
 		);
+		const invalidDelivery = await app.request(
+			new Request('https://example.test/webhook', {
+				method: 'POST',
+				headers: { ...headers, 'linear-delivery': 'delivery-worker' },
+				body,
+			}),
+		);
 
 		expect(response.status).toBe(200);
 		expect(changed.status).toBe(401);
+		expect(invalidDelivery.status).toBe(400);
 		expect(webhook).toHaveBeenCalledOnce();
 		const input = webhook.mock.calls[0]?.[0];
-		expect(input.deliveryId).toBe('delivery-worker');
+		expect(input.deliveryId).toBe('f36065f1-60c5-40e5-aef3-eaf3e734383f');
 		expect(input.payload).toMatchObject({
 			type: 'AgentSessionEvent',
 			action: 'prompted',
