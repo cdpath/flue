@@ -38,7 +38,7 @@ export interface SlackChannelOptions<E extends Env = Env> {
 	commands?(input: SlackCommandsHandlerInput<E>): SlackHandlerResult;
 }
 
-/** Canonical Slack thread destination within the configured workspace. */
+/** Canonical Slack thread destination including its workspace identity. */
 export interface SlackThreadRef {
 	teamId: string;
 	channelId: string;

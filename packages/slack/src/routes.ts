@@ -1,9 +1,9 @@
-import type { Context, Env, Handler } from 'hono';
+import type { Env, Handler } from 'hono';
 import type {
-	SlackEventsApiPayload,
+	SlackCommandsHandlerInput,
+	SlackEventsHandlerInput,
 	SlackHandlerResult,
-	SlackInteractionPayload,
-	SlackSlashCommandPayload,
+	SlackInteractionsHandlerInput,
 } from './index.ts';
 
 const DEFAULT_BODY_LIMIT = 1024 * 1024;
@@ -16,15 +16,15 @@ interface SharedRouteOptions {
 }
 
 interface SlackEventsHandlerOptions<E extends Env> extends SharedRouteOptions {
-	events(input: { c: Context<E>; payload: SlackEventsApiPayload }): SlackHandlerResult;
+	events(input: SlackEventsHandlerInput<E>): SlackHandlerResult;
 }
 
 interface SlackInteractionsHandlerOptions<E extends Env> extends SharedRouteOptions {
-	interactions(input: { c: Context<E>; payload: SlackInteractionPayload }): SlackHandlerResult;
+	interactions(input: SlackInteractionsHandlerInput<E>): SlackHandlerResult;
 }
 
 interface SlackCommandsHandlerOptions<E extends Env> extends SharedRouteOptions {
-	commands(input: { c: Context<E>; payload: SlackSlashCommandPayload }): SlackHandlerResult;
+	commands(input: SlackCommandsHandlerInput<E>): SlackHandlerResult;
 }
 
 export function createSlackEventsHandler<E extends Env>(
@@ -54,7 +54,10 @@ export function createSlackEventsHandler<E extends Env>(
 		}
 
 		return serializeHandlerResult(
-			await options.events({ c, payload: raw as unknown as SlackEventsApiPayload }),
+			await options.events({
+				c,
+				payload: raw as unknown as SlackEventsHandlerInput<E>['payload'],
+			}),
 		);
 	};
 }
@@ -74,7 +77,10 @@ export function createSlackInteractionsHandler<E extends Env>(
 		const type = readString(raw, 'type');
 		if (!type) return response(400);
 		return serializeHandlerResult(
-			await options.interactions({ c, payload: raw as unknown as SlackInteractionPayload }),
+			await options.interactions({
+				c,
+				payload: raw as unknown as SlackInteractionsHandlerInput<E>['payload'],
+			}),
 		);
 	};
 }
@@ -95,7 +101,7 @@ export function createSlackCommandsHandler<E extends Env>(
 		return serializeHandlerResult(
 			await options.commands({
 				c,
-				payload: payload as unknown as SlackSlashCommandPayload,
+				payload: payload as unknown as SlackCommandsHandlerInput<E>['payload'],
 			}),
 		);
 	};

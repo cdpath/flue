@@ -57,14 +57,18 @@ Validate only what Flue needs to own the ingress boundary:
 - authentication and replay protection;
 - body and transport encoding;
 - mandatory protocol handshakes or responses;
-- configured application, tenant, or destination identity;
+- configured application, tenant, or destination identity only when the
+  provider protocol does not already bind it cryptographically and the
+  constructor intentionally promises that restriction;
 - the minimal structure required to route and invoke application code.
 
 TypeScript types do not require exhaustive runtime schema validation after an
 authenticated provider request. Forward authenticated deliveries to
 application code unless the request is a package-owned protocol message.
 Filtering bots, message subtypes, event families, and other valid provider
-behavior is application policy.
+behavior is application policy. Workspace allowlists, tenant authorization,
+and installation policy also remain application concerns unless they are an
+explicit part of the channel's necessary verification contract.
 
 Define local wire-shaped types only when no suitable authoritative type exists,
 or when a narrow Flue-owned transport wrapper has no provider type. Keep field
@@ -225,6 +229,48 @@ requests. Confirm that no test or build contacts the provider.
 Use the audit matrix for the complete evidence set and adapt commands to the
 current package scripts. Do not add a generic conformance script or duplicate
 provider protocol assertions outside provider-owned suites.
+
+## Run A Scope And Simplicity Audit
+
+Before final review, examine every public option, type, validation branch,
+helper, response path, and test for whether its value justifies making Flue
+responsible for it. Prefer deletion and standard platform behavior when the
+provider contract does not require custom machinery.
+
+Apply these questions:
+
+- Does request authentication already establish the identity that another
+  constructor option or allowlist rechecks? Do not turn application
+  authorization policy into channel verification without a concrete protocol
+  requirement.
+- Does a package-owned timeout actually cancel work? Do not race a callback
+  against a timer when the callback can continue after the response; document
+  the provider deadline and let applications admit durable work promptly.
+- Is a local payload type current, useful, and otherwise unavailable? Type the
+  smallest current provider surface that provides meaningful narrowing. Do not
+  maintain deprecated or legacy schemas merely for completeness, but do not
+  collapse valuable current provider types to `unknown` solely to reduce line
+  count.
+- Can standard Hono or Fetch responses express the contract? Avoid custom
+  return APIs, redundant provider response aliases, recursive JSON validators,
+  and package-specific error interception unless the protocol requires them.
+  Preserve proven cross-realm response handling at the owning shared boundary.
+- Does a public error give consumers a meaningful programmatic distinction?
+  Prefer ordinary platform errors for invalid trusted helper inputs, but audit
+  established cross-channel error patterns as a portfolio decision instead of
+  making one provider inconsistent.
+- Are internal callback signatures duplicating exported public input types?
+  Reuse the public types so implementation and declarations cannot drift.
+
+Classify review outcomes explicitly:
+
+- safe cleanup that preserves public behavior;
+- meaningful public simplification that requires approval;
+- rejected deletion where the protocol, security boundary, or developer
+  experience justifies the existing scope.
+
+Record the classification and reasoning in the active plan. A channel is not
+more conformant because it has more options, validation, types, or tests.
 
 ## Reflect On The Foundation
 

@@ -178,6 +178,9 @@ equivalent. Follow the repository's dependency build order.
 - Check fake transports fail if a real network request escapes.
 - Run formatting, lint, type, test, whitespace, and stale-claim searches
   relevant to changed files.
+- Run the skill's scope and simplicity audit. Classify safe cleanup, public
+  simplifications requiring approval, and rejected deletions whose protocol or
+  DX value justifies their maintenance cost.
 
 ## Cross-Provider Reflection
 
