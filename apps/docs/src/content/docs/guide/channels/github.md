@@ -131,8 +131,9 @@ admission matters. GitHub does not automatically retry every failed webhook
 delivery; use its delivery inspection and manual redelivery tools when needed.
 
 Octokit's REST methods use Fetch and the example's typed
-`issues.createComment()` operation is tested in workerd without
-`nodejs_compat`. Cloudflare projects should still initialize credentials from
-their typed Worker bindings and verify their complete target build.
+`issues.createComment()` operation is tested in workerd with Flue's required
+`nodejs_compat` configuration. Cloudflare projects may initialize credentials
+through `process.env` or typed Worker bindings and should verify their complete
+target build.
 
 See the [`@flue/github` API reference](/docs/api/github-channel/).

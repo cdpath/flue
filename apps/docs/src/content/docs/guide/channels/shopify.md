@@ -311,14 +311,14 @@ depend on a live Admin API token.
 ## Cloudflare Workers
 
 The direct Web Crypto verifier and the ordinary Fetch request path from
-`@shopify/admin-api-client@1.1.2` execute in Node and workerd without
-`nodejs_compat`. This is evidence for the client operation shown here, not a
-blanket guarantee for the full `@shopify/shopify-api` SDK or every helper in
-the Admin client.
+`@shopify/admin-api-client@1.1.2` execute in Node and workerd with Flue's
+required `nodejs_compat` configuration. This is evidence for the client
+operation shown here, not a blanket guarantee for the full
+`@shopify/shopify-api` SDK or every helper in the Admin client.
 
-Cloudflare projects should initialize secrets through typed Worker bindings
-instead of assuming `process.env`. Test the exact GraphQL operations used by
-the application against its Worker target.
+Cloudflare projects may initialize secrets through `process.env` or typed
+Worker bindings. Test the exact GraphQL operations used by the application
+against its Worker target.
 
 Create original synthetic webhook bodies and locally generated HMACs. Cover
 valid and tampered exact bytes, current and previous secrets, required

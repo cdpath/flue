@@ -1,7 +1,8 @@
-import { createWhatsAppChannel, type WhatsAppConversationRef } from '@flue/whatsapp';
 import { defineTool, dispatch } from '@flue/runtime';
+import { createWhatsAppChannel, type WhatsAppConversationRef } from '@flue/whatsapp';
 import { WhatsAppClient } from '@kapso/whatsapp-cloud-api';
 import assistant from '../agents/assistant.ts';
+import { sendTextMessage } from '../whatsapp-client.ts';
 
 export const client = new WhatsAppClient({
 	accessToken: requiredEnv('WHATSAPP_ACCESS_TOKEN'),
@@ -43,7 +44,6 @@ export const channel = createWhatsAppChannel({
 });
 
 export function postMessage(ref: WhatsAppConversationRef) {
-	const to = ref.type === 'group' ? ref.groupId : ref.recipientId;
 	return defineTool({
 		name: 'post_whatsapp_message',
 		description: 'Post a message to the WhatsApp conversation bound to this agent.',
@@ -56,12 +56,7 @@ export function postMessage(ref: WhatsAppConversationRef) {
 			additionalProperties: false,
 		},
 		async execute({ text }) {
-			const result = await client.messages.sendText({
-				phoneNumberId: ref.phoneNumberId,
-				recipientType: ref.type,
-				to,
-				body: text,
-			});
+			const result = await sendTextMessage(client, ref, text);
 			return JSON.stringify({ messageId: result.messages[0]?.id });
 		},
 	});

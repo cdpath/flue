@@ -22,10 +22,10 @@ verification, exact-body POST signature verification, fixed business identity,
 batch preservation, and event normalization. The project owns the access token,
 full outbound client, tools, dispatch policy, and durable deduplication.
 
-The SDK root export is Fetch-based and executes in Node and Cloudflare Workers
-without `nodejs_compat`. Do not import its `/server` subpath for ordinary
-messaging. Keep a workerd fake-transport test for every client operation the
-project relies on.
+The SDK root export is Fetch-based and executes in Node and workerd with
+Flue's required `nodejs_compat` configuration. Do not import its `/server`
+subpath for ordinary messaging. Keep a workerd fake-transport test for every
+client operation the project relies on.
 
 ## Create the channel
 
@@ -38,7 +38,10 @@ import {
   type WhatsAppConversationRef,
 } from '@flue/whatsapp';
 import { defineTool, dispatch } from '@flue/runtime';
-import { WhatsAppClient } from '@kapso/whatsapp-cloud-api';
+import {
+  WhatsAppClient,
+  type SendMessageResponse,
+} from '@kapso/whatsapp-cloud-api';
 import assistant from '../agents/assistant.ts';
 
 export const client = new WhatsAppClient({
@@ -82,8 +85,39 @@ export const channel = createWhatsAppChannel({
   },
 });
 
+function sendTextMessage(
+  ref: WhatsAppConversationRef,
+  body: string,
+): Promise<SendMessageResponse> {
+  if (ref.type === 'group') {
+    return client.messages.sendText({
+      phoneNumberId: ref.phoneNumberId,
+      recipientType: 'group',
+      to: ref.groupId,
+      body,
+    });
+  }
+  if (ref.destination.type === 'phone-number') {
+    return client.messages.sendText({
+      phoneNumberId: ref.phoneNumberId,
+      recipientType: 'individual',
+      to: ref.destination.phoneNumber,
+      body,
+    });
+  }
+  return client.request<SendMessageResponse>('POST', `${ref.phoneNumberId}/messages`, {
+    body: {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      recipient: ref.destination.userId,
+      type: 'text',
+      text: { body },
+    },
+    responseType: 'json',
+  });
+}
+
 export function postMessage(ref: WhatsAppConversationRef) {
-  const to = ref.type === 'group' ? ref.groupId : ref.recipientId;
   return defineTool({
     name: 'post_whatsapp_message',
     description: 'Post to the WhatsApp conversation bound to this agent.',
@@ -96,12 +130,7 @@ export function postMessage(ref: WhatsAppConversationRef) {
       additionalProperties: false,
     },
     async execute({ text }) {
-      const result = await client.messages.sendText({
-        phoneNumberId: ref.phoneNumberId,
-        recipientType: ref.type,
-        to,
-        body: text,
-      });
+      const result = await sendTextMessage(ref, text);
       return JSON.stringify({ messageId: result.messages[0]?.id });
     },
   });
@@ -177,10 +206,16 @@ delivered, read, played, failed, and unknown provider states.
 
 ## Respect identity boundaries
 
-Individual identity includes the fixed business phone number and the inbound
-`from` value used as the outbound destination. Group identity uses the
-provider's group id. Sender `wa_id` remains separate because Meta documents
-that it may differ from the sender phone number.
+Meta now supplies a Business-Scoped User ID in incoming message webhooks and
+may omit the sender phone number. Individual destinations distinguish a phone
+number from a BSUID, prefer the BSUID when both are available, and use the
+matching `to` or `recipient` outbound request field. Group identity uses the
+provider's group id.
+
+The SDK's current high-level text helper models `to` but not the documented
+BSUID `recipient` field. Keep the full exported SDK client and use its
+authenticated low-level `request()` method for that one application-owned
+operation. Do not add outbound behavior to `@flue/whatsapp`.
 
 Media download URLs are omitted from normalized media objects because they are
 bearer-authenticated transport details. Use the verified media id and the
@@ -195,11 +230,15 @@ Create original synthetic payloads from the current official schemas and cover:
 - exact-body HMAC verification with changed bytes and Unicode;
 - fixed business-account and phone-number identity mismatches;
 - multiple entries, changes, messages, statuses, and unknown fields;
+- phone-only, BSUID-only, and combined identity payloads, including parent
+  BSUIDs and omitted phone fields;
 - text, media, location, contacts, interactive replies, reactions,
   revocations, unsupported messages, and unknown message types;
 - malformed JSON, content type, body limits, and response behavior;
-- individual and group conversation-key round trips;
-- real SDK requests against an injected fake Fetch transport in workerd;
+- phone, BSUID, and group conversation-key round trips without namespace
+  collisions;
+- real SDK helper and low-level BSUID requests against an injected fake Fetch
+  transport in workerd;
 - Node and Cloudflare project builds.
 
 Do not contact Meta or copy third-party fixtures.

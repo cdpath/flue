@@ -21,9 +21,9 @@ Install `@flue/telegram` and `grammy@^1.43.0`. Flue owns verified webhook
 ingress. The project owns grammY's full `Api` client, update policy, durable
 deduplication, and every outbound tool.
 
-grammY's browser/Fetch export executes in Node and Cloudflare Workers without
-`nodejs_compat`. Keep a workerd fake-transport test for every Bot API operation
-the project relies on.
+grammY's browser/Fetch export executes in Node and workerd with Flue's required
+`nodejs_compat` configuration. Keep a workerd fake-transport test for every Bot
+API operation the project relies on.
 
 ## Create the channel
 

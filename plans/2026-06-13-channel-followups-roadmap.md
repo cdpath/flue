@@ -2,9 +2,11 @@
 
 ## Status
 
-The ten-provider first-party channel plan is implemented and audited. This
-document records release work, deferred product decisions, and candidate
-expansions without reopening the completed ingress design.
+The original ten-provider first-party channel plan and the seven eligible
+follow-up providers are implemented and audited. The portfolio now contains
+17 release-ready HTTP channel packages. This document records implementation
+evidence, release work, deferred product decisions, and candidate expansions
+without reopening the completed ingress design.
 
 Scope decisions confirmed after implementation:
 
@@ -40,7 +42,7 @@ Scope decisions confirmed after implementation:
 
 This is the immediate next milestone.
 
-- Choose the release version and publish the ten `@flue/*` channel packages
+- Choose the release version and publish the 17 `@flue/*` channel packages
   together with the runtime and CLI changes they require.
 - Deploy `apps/www` so the public connector registry serves all ten named
   recipes before announcing `flue add <provider>`.
@@ -61,7 +63,11 @@ blocker. These examples are compatibility and integration fixtures, not
 deployment-ready Wrangler projects, and the channel plans never committed to
 owning deployment migration history.
 
-## 2. Capture Channel Conformance As An Agent Skill
+## 2. Channel Conformance Agent Skill
+
+Complete. The repository now contains `.agents/skills/channel-conformance/`
+and the seven follow-up providers were implemented and audited through that
+workflow.
 
 The final audit required judgment as well as commands, so it should not become
 another repository-owned script.
@@ -514,7 +520,8 @@ Dependencies and example:
   `Stripe.createFetchHttpClient()`, dispatches completed Checkout events, and
   defines a narrow tool bound to the already-selected customer.
 - Workerd tests must execute snapshot and thin verification plus a real
-  outbound SDK request against fake Fetch without `nodejs_compat`.
+  outbound SDK request against fake Fetch with Flue's required
+  `nodejs_compat` configuration.
 
 Non-goals:
 
@@ -557,8 +564,8 @@ Validation:
 
 - Package build, strict typecheck, 13 Node tests, and two workerd ingress tests
   pass. Workerd executes the official Stripe Worker export, Web Crypto snapshot
-  and thin verification, context parsing, and SDK-provided fetch methods
-  without `nodejs_compat`.
+  and thin verification, context parsing, and SDK-provided fetch methods under
+  Flue's required `nodejs_compat` configuration.
 - Example strict typecheck, Node fake-client test, workerd fake-client test,
   Node build, and Cloudflare target build pass. The workerd test executes a
   real official SDK customer request against fake Fetch and confirms the Node
@@ -676,7 +683,8 @@ Eligibility:
   deduplication is the only replay defense.
 - The official client is Fetch-injectable and documents Cloudflare Workers
   compatibility after its v5.21 runtime fix. Actual SDK execution in workerd
-  without `nodejs_compat` remains required before completion.
+  with Flue's required `nodejs_compat` configuration remains required before
+  completion.
 - Webhook subscription creation, OAuth, integration ownership, token storage,
   and event selection remain developer-owned setup.
 
@@ -730,7 +738,8 @@ Dependencies and example:
   must be stored as `NOTION_WEBHOOK_VERIFICATION_TOKEN` before ordinary event
   delivery.
 - Workerd tests must execute Web Crypto ingress verification and a real
-  official SDK page request against fake Fetch without `nodejs_compat`.
+  official SDK page request against fake Fetch with Flue's required
+  `nodejs_compat` configuration.
 
 Non-goals:
 
@@ -778,7 +787,7 @@ Validation:
 
 - Package build, strict typecheck, 17 Node tests, and two workerd ingress tests
   pass. Workerd executes exact-byte Web Crypto verification and setup handling
-  without requiring `nodejs_compat`.
+  with Flue's required `nodejs_compat` configuration.
 - Example strict typecheck, Node fake-client test, workerd fake-client test,
   Node build, and Cloudflare target build pass. Both runtime tests execute the
   same exported `createNotionClient()` factory used to create the project-owned
@@ -892,8 +901,8 @@ Eligibility:
 - The official SDK uses global Fetch for ordinary API calls and pure
   JavaScript Standard Webhooks verification. Its package is named and
   engine-constrained for Node, so actual verifier and client execution in
-  workerd without `nodejs_compat` is a completion gate rather than an inferred
-  compatibility claim.
+  workerd with Flue's required `nodejs_compat` configuration is a completion
+  gate rather than an inferred compatibility claim.
 
 Design:
 
@@ -980,16 +989,17 @@ Implementation:
 Validation:
 
 - Package build, strict typecheck, nine Node tests, and two workerd ingress
-  tests pass. Workerd executes the official Resend verifier over exact bytes
-  with `process` and `Buffer` explicitly unavailable.
+  tests pass. The final audit executes the official Resend verifier over exact
+  bytes in workerd with Flue's required `nodejs_compat` configuration and
+  confirms `process` and `Buffer` are available.
 - Example strict typecheck, Node fake-client test, workerd fake-client test,
   Node build, and Cloudflare target build pass. The workerd client test
-  executes `emails.receiving.get()` through the official SDK with `process`
-  and `Buffer` explicitly unavailable.
+  executes `emails.receiving.get()` through the official SDK in the canonical
+  `nodejs_compat` environment.
 - A separate clean workerd consumer installed only the packed
   `@flue/resend`, `resend`, declaration peers, and the Workers test runner. It
-  executed both verification and the receiving-email Fetch path without React
-  runtime packages, Node globals, or `nodejs_compat`.
+  executed both verification and the receiving-email Fetch path under
+  `nodejs_compat` without React runtime packages.
 - A built Node application returned an empty `200` for an original locally
   signed future event and `400` for the same signature over altered bytes.
 - The full CLI suite passes: 53 Node tests and 24 Vitest tests. The real built
@@ -1098,8 +1108,9 @@ Eligibility:
   and token state must remain outside ingress because `shop/redact` can arrive
   after uninstall.
 - Direct Web Crypto verification and the official lightweight Admin GraphQL
-  client both executed in workerd without compatibility flags. The full
-  `@shopify/shopify-api` package also has a Worker adapter, but it is
+  client both execute in workerd with Flue's required `nodejs_compat`
+  configuration. The full `@shopify/shopify-api` package also has a Worker
+  adapter, but it is
   Node-oriented, substantially broader, and unnecessary for either ingress or
   the editable example.
 
@@ -1202,16 +1213,16 @@ Validation:
 - Package build, strict typecheck, ten Node tests, and three workerd ingress
   tests pass. Workerd executes Web Crypto verification, current and rotated
   secrets, lossless unsafe-id parsing, and streamed body limiting with
-  `process` and `Buffer` unavailable.
+  `nodejs_compat`; `process` and `Buffer` are present.
 - Example strict typecheck, Node fake-client test, workerd fake-client test,
   Node build, and Cloudflare target build pass. Both runtime tests execute the
   same exported `createShopifyClient()` factory and reject unexpected network
-  destinations. The client workerd test runs without compatibility flags or
-  Node globals.
+  destinations. The client workerd test runs with Flue's required
+  `nodejs_compat` configuration.
 - The generated Flue Worker includes `nodejs_compat` because the current Flue
-  runtime requires it for API-key lookup and AsyncLocalStorage. This does not
-  weaken the provider proof: package verification and the official Admin
-  client were separately executed in workerd without that flag.
+  runtime requires it for API-key lookup and AsyncLocalStorage. The final audit
+  treats this as the canonical provider proof and executes both package
+  verification and the official Admin client in that environment.
 - A built Node application returned an empty `200` for an original locally
   signed future-topic body and `401` when one value changed under the same
   signature.
@@ -1227,8 +1238,7 @@ Validation:
   compiled a custom Hono environment, and imported the constructor at
   runtime.
 - A separate clean workerd consumer installed the packed package and executed
-  exact-byte verification plus unsafe-id parsing without compatibility flags,
-  `process`, or `Buffer`.
+  exact-byte verification plus unsafe-id parsing under `nodejs_compat`.
 - Focused Biome, Prettier, whitespace, and credential-pattern checks pass.
   The repository-wide lint command still reports unrelated existing warnings
   in runtime, Postgres, Notion, and CLI files. No Shopify test or build
@@ -1778,16 +1788,187 @@ only through a separate product decision that intentionally introduces a
 long-lived transport model; do not approximate it through channel route
 declarations.
 
+## 8. Final Seventeen-Provider Audit
+
+The final portfolio audit completed after Salesforce Marketing Cloud.
+
+### WhatsApp BSUID review correction
+
+An independent portfolio review found that the WhatsApp channel rejected
+Business-Scoped User ID payloads that Meta began rolling out in early April
+2026. Current official documentation allows incoming message `from` and status
+`recipient_id` phone fields to be omitted while supplying `from_user_id`,
+contact `user_id`, and `recipient_user_id`.
+
+Design brief:
+
+- Keep `@flue/whatsapp`, `channels/whatsapp.ts`, and the existing GET/POST
+  `/channels/whatsapp/webhook` surface.
+- Continue exact-byte HMAC verification and fixed business-account and business
+  phone-number checks before normalization.
+- Preserve optional phone numbers, BSUIDs, parent BSUIDs, usernames, and
+  profile names in typed message, sender, and status values. Require at least
+  one usable sender or recipient identity for legacy-compatible payloads.
+- Model individual conversation destinations explicitly as either a phone
+  number or a BSUID. Prefer the BSUID when Meta supplies both, keep groups
+  keyed by group id, and encode the destination kind in canonical keys so
+  equal strings in different identity namespaces cannot collide.
+- Keep the broad Kapso SDK in the editable example for supported phone and
+  group sends. Add a narrow project-owned Fetch path for BSUID sends because
+  the current SDK release accepts only `to`, while Meta requires `recipient`
+  when no phone number is available.
+- Exercise BSUID-only messages and statuses, malformed missing identity,
+  canonical phone/BSUID/group keys, and outbound `recipient` request
+  construction with original synthetic fixtures in Node and workerd under
+  Flue's required `nodejs_compat`.
+- Keep `user_id_update` and other unmodeled webhook fields observable through
+  the verified unknown-event path. Broader WhatsApp event expansion remains
+  demand-driven.
+- Do not add outbound behavior to the Flue package, contact Meta, or introduce
+  shared identity machinery. This correction is provider-specific and
+  review-driven.
+
+Resolution:
+
+- Primary evidence came from Meta's current Business-Scoped User ID
+  documentation and its June 12, 2026 changelog, plus Cloudflare's current
+  Node.js compatibility documentation. Meta documents that incoming messages
+  now include `from_user_id`, contacts include `user_id`, status events include
+  `recipient_user_id`, and the corresponding phone fields can be omitted.
+  BSUID-only outbound messages use `recipient` instead of `to`.
+- `@flue/whatsapp` now accepts legacy phone-only, combined phone-and-BSUID, and
+  BSUID-only messages and statuses. It preserves parent identifiers and
+  usernames, verifies contact/message identity consistency, prefers the BSUID
+  for individual conversation identity when available, and keeps group
+  identity provider-native.
+- Individual conversation references now contain an explicit `phone-number` or
+  `user-id` destination. Canonical keys encode the destination namespace;
+  original tests prove that equal phone and BSUID strings do not collide and
+  that phone, BSUID, and group keys round trip.
+- The editable example still exports the real Kapso `WhatsAppClient`. Its
+  project-owned `sendTextMessage()` helper uses the SDK's ordinary text helper
+  for phone and group destinations and its authenticated low-level
+  `request()` method for Meta's BSUID `recipient` payload. Credentials remain
+  configured once.
+- Original synthetic Node coverage now includes BSUID-only messages and
+  statuses, combined identity preference, contact metadata, missing-identity
+  rejection, and collision-safe keys. Workerd executes a signed BSUID-only
+  incoming message. Example Node and workerd tests execute the real SDK against
+  fail-closed fake Fetch for phone, BSUID, and group sends.
+- Package build, strict typecheck, ten Node tests, and one workerd test pass.
+  Example strict typecheck, one Node client test, one workerd client test, Node
+  build, and Cloudflare build pass under Flue's required `nodejs_compat`
+  configuration.
+- The built Node application returned `200` for an original locally signed
+  BSUID-only message and `401` for the same signature over changed bytes. The
+  generated Cloudflare Worker ran under Wrangler's local workerd and returned
+  `200` for an original signed BSUID-only status and `401` after byte
+  tampering. A message smoke reached the example's dispatch path and then hit
+  the already-recorded missing Durable Object migration warning, so the
+  channel-only Worker smoke intentionally uses the non-dispatching status case.
+- The full CLI suite passes with 57 Node tests and 24 Vitest tests, including
+  the generated WhatsApp recipe. Documentation check and the 99-page
+  production build pass, and the connector site emits the WhatsApp recipe.
+- Publish preparation passes. The packed WhatsApp artifact contains 103
+  intended files and no source, tests, workerd configuration, environment
+  files, or dependencies. A fresh strict TypeScript consumer compiles the new
+  identity surface, imports the constructor in Node, and executes the packed
+  package in workerd with `nodejs_compat` and `process` available.
+- No Meta API was contacted. Fixtures and request bodies are original and
+  synthetic. The independent review's BSUID finding is resolved; no additional
+  shared machinery change or new product deferral is warranted.
+
+Compatibility-policy correction:
+
+- Flue's Cloudflare target requires `nodejs_compat`; workerd tests should
+  reproduce that environment instead of treating the absence of Node APIs as
+  a stronger compatibility property.
+- Cloudflare's current official Node.js compatibility documentation confirms
+  implementations for supported APIs including `process` and `Buffer`.
+  Imports backed only by non-functional compatibility stubs remain
+  unacceptable.
+- All 17 package workerd configurations and all 17 example workerd
+  configurations now enable `nodejs_compat`.
+- Recipes, guides, and example READMEs no longer tell developers to avoid
+  `process.env`, `Buffer`, or `nodejs_compat`. Projects may use
+  `process.env` or typed Worker bindings according to their credential
+  convention.
+- Resend and Shopify workerd tests no longer erase `process` and `Buffer`.
+  They execute the same verification and fake-client paths in Flue's actual
+  Workers environment and assert that the compatibility globals exist.
+
+Portfolio validation:
+
+- All 17 packages pass build, strict typecheck, 206 combined Node tests, and
+  28 combined workerd tests.
+- All 17 editable examples pass strict typecheck, 31 combined Node/workerd
+  client tests, Node builds, and Cloudflare builds. Node and Cloudflare build
+  groups were rerun separately so their shared per-example `dist/` directories
+  could not race.
+- The full CLI suite passes with 57 Node tests and 24 Vitest tests. The real
+  built connector registry contains all 17 named channels.
+- Documentation diagnostics report zero errors, warnings, or hints. The
+  production docs build emits 99 pages, and the connector site builds every
+  named channel recipe.
+- `pnpm install --frozen-lockfile` and `node scripts/prepare-publish.mjs`
+  pass.
+- Every channel package packs to an intentional 103-file artifact containing
+  its manifest, built runtime, declarations, README, license, and prepared
+  documentation without source, test, workerd-config, environment, or
+  `node_modules` leakage.
+- One clean consumer installed all 17 tarballs together, passed strict
+  TypeScript, imported every constructor in Node, and imported every
+  constructor in workerd with `nodejs_compat`.
+- The scoped 302-file channel lint is clean. Repository-wide lint and knip
+  complete successfully with unrelated existing Biome warnings in runtime,
+  Postgres, and CLI files.
+- Formatting, whitespace, stale compatibility-claim, and credential-pattern
+  checks pass. The only PEM values are explicitly synthetic Google Chat test
+  material and a redacted README example.
+- No provider API was contacted. Verification used original synthetic webhook
+  bodies, local signatures or tokens, fake outbound transports, and local
+  workerd execution.
+
+Audit corrections:
+
+- Removed an accidental standalone export for the Salesforce Marketing Cloud
+  example callback response shape.
+- Removed one unused Hono type import from the Notion package.
+- Corrected the final stale Telegram connector claim that treated execution
+  without `nodejs_compat` as a stronger compatibility property. The regenerated
+  CLI recipe and connector site build pass.
+- Cloudflare builds still report the known missing Durable Object migration
+  warning for examples. This remains outside channel ownership because the
+  examples prove integration and runtime compatibility rather than turnkey
+  deployment history.
+- Upstream packages emit missing-sourcemap and `punycode` deprecation warnings
+  during some tests. They do not affect runtime behavior or the passing gates.
+
+Foundation reflection:
+
+- Fixed discovery, provider-specific routes, extensible `{ c, event }`
+  callbacks, normal Hono/Fetch response handling, application-owned clients
+  and tools, and provider-native identity all held across 17 materially
+  different providers.
+- The portfolio still does not justify a universal event schema, generic
+  outbound client, installation framework, generic authentication layer, or
+  long-lived transport abstraction.
+- Lossless JSON, exact-byte verification, identity consistency checks,
+  handshakes, batching, deadlines, and retry responses remain
+  provider-specific where their protocols require them.
+- The one justified shared audit correction was environmental: workerd tests
+  should model Flue's canonical `nodejs_compat` target consistently.
+
 ## Suggested Sequence
 
-1. Release and deploy the completed ten-provider work.
-2. Add the channel implementation and conformance agent skill.
-3. Research Stripe, Notion, Resend, Shopify, Intercom, Zendesk, and Salesforce
-   one at a time, shipping only after the HTTP and Cloudflare gates are proven.
-4. Reassess existing HTTP provider expansions from user demand after the first
-   channel release has real adoption data.
+1. Choose a coordinated version and release the completed 17-provider
+   portfolio with the required runtime, CLI, docs, and connector deployment.
+2. Repeat the clean-consumer and example checks against the actual published
+   packages and deployed connector registry.
+3. Reassess existing HTTP provider expansions and new providers only from
+   concrete user demand after the first channel release has adoption data.
 
-No additional channel was added during the final audit. Starting another
-provider after the completed cross-provider review would require a fresh
-research, implementation, testing, and audit cycle; the candidates above are
-better handled as independent workstreams.
+No additional channel was added during the final cross-provider audit.
+Starting another provider after this point requires a fresh research,
+implementation, testing, and audit cycle; the candidates and deferrals above
+are better handled as independent workstreams.

@@ -7,8 +7,6 @@ describe('Resend Client', () => {
 	});
 
 	it('retrieves the bound inbound email through Fetch when executed in workerd', async () => {
-		vi.stubGlobal('process', undefined);
-		vi.stubGlobal('Buffer', undefined);
 		const expectedUrl = 'https://resend-worker.test/emails/receiving/email-worker-29';
 		const fetcher = vi.fn<typeof globalThis.fetch>(async (url, init) => {
 			if (String(url) !== expectedUrl) {
@@ -50,7 +48,7 @@ describe('Resend Client', () => {
 			text: 'Worker body',
 		});
 		expect(fetcher).toHaveBeenCalledOnce();
-		expect(globalThis.process).toBeUndefined();
-		expect(globalThis.Buffer).toBeUndefined();
+		expect(globalThis.process).toBeDefined();
+		expect(globalThis.Buffer).toBeDefined();
 	});
 });

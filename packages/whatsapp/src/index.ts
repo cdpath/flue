@@ -40,7 +40,15 @@ export type WhatsAppConversationRef =
 			type: 'individual';
 			businessAccountId: string;
 			phoneNumberId: string;
-			recipientId: string;
+			destination:
+				| {
+						type: 'phone-number';
+						phoneNumber: string;
+				  }
+				| {
+						type: 'user-id';
+						userId: string;
+				  };
 	  }
 	| {
 			type: 'group';
@@ -49,13 +57,25 @@ export type WhatsAppConversationRef =
 			groupId: string;
 	  };
 
-export interface WhatsAppUserRef {
-	/** Phone number supplied by the message `from` field. */
-	phoneNumber: string;
-	/** WhatsApp user id when Meta supplies a matching contact record. */
-	userId?: string;
+export type WhatsAppUserRef = {
+	/** Parent BSUID when the business has enabled parent identifiers. */
+	parentUserId?: string;
 	profileName?: string;
-}
+	username?: string;
+} & (
+	| {
+			/** Phone number supplied by `from` or contact `wa_id`. */
+			phoneNumber: string;
+			/** Business-Scoped User ID supplied by Meta when available. */
+			userId?: string;
+	  }
+	| {
+			/** Phone number supplied by Meta when disclosure conditions permit. */
+			phoneNumber?: string;
+			/** Business-Scoped User ID supplied by `from_user_id` or contact `user_id`. */
+			userId: string;
+	  }
+);
 
 export interface WhatsAppMessageContext {
 	messageId?: string;
@@ -122,14 +142,25 @@ export interface WhatsAppSharedContact {
 	}[];
 }
 
-interface WhatsAppMessageBase {
+export type WhatsAppMessageSenderIdentity =
+	| {
+			from: string;
+			fromUserId?: string;
+			fromParentUserId?: string;
+	  }
+	| {
+			from?: string;
+			fromUserId: string;
+			fromParentUserId?: string;
+	  };
+
+type WhatsAppMessageBase = WhatsAppMessageSenderIdentity & {
 	id: string;
-	from: string;
 	timestamp: number;
 	groupId?: string;
 	context?: WhatsAppMessageContext;
 	referral?: WhatsAppReferral;
-}
+};
 
 export type WhatsAppMessage =
 	| (WhatsAppMessageBase & {
@@ -222,8 +253,12 @@ export interface WhatsAppStatusEvent extends WhatsAppEventPosition {
 		state: 'delivered' | 'failed' | 'played' | 'read' | 'sent' | 'unknown';
 		providerState: string;
 		timestamp: number;
-		recipientId: string;
+		recipientId?: string;
+		recipientUserId?: string;
+		recipientParentUserId?: string;
 		recipientParticipantId?: string;
+		recipientParticipantUserId?: string;
+		recipientParticipantParentUserId?: string;
 		opaqueCallbackData?: string;
 		conversationId?: string;
 		conversationCategory?: string;
@@ -303,31 +338,61 @@ export function createWhatsAppChannel<E extends Env = Env>(
 			];
 			return ref.type === 'group'
 				? [...base, 'group', encodeURIComponent(ref.groupId)].join(':')
-				: [...base, 'individual', encodeURIComponent(ref.recipientId)].join(':');
+				: [
+						...base,
+						'individual',
+						ref.destination.type,
+						encodeURIComponent(
+							ref.destination.type === 'phone-number'
+								? ref.destination.phoneNumber
+								: ref.destination.userId,
+						),
+					].join(':');
 		},
 		parseConversationKey(id) {
 			try {
-				const match =
-					/^whatsapp:v1:business-account:([^:]+):phone-number:([^:]+):(individual|group):([^:]+)$/.exec(
+				const groupMatch =
+					/^whatsapp:v1:business-account:([^:]+):phone-number:([^:]+):group:([^:]+)$/.exec(id);
+				const individualMatch =
+					/^whatsapp:v1:business-account:([^:]+):phone-number:([^:]+):individual:(phone-number|user-id):([^:]+)$/.exec(
 						id,
 					);
+				const match = groupMatch ?? individualMatch;
 				if (!match) throw new InvalidWhatsAppConversationKeyError();
-				const [, businessAccountId, phoneNumberId, type, destination] = match;
-				if (!businessAccountId || !phoneNumberId || !type || !destination) {
+				const [, businessAccountId, phoneNumberId] = match;
+				if (!businessAccountId || !phoneNumberId) {
 					throw new InvalidWhatsAppConversationKeyError();
 				}
 				const common = {
 					businessAccountId: decodeURIComponent(businessAccountId),
 					phoneNumberId: decodeURIComponent(phoneNumberId),
 				};
-				const ref: WhatsAppConversationRef =
-					type === 'group'
-						? { type, ...common, groupId: decodeURIComponent(destination) }
-						: {
-								type: 'individual',
-								...common,
-								recipientId: decodeURIComponent(destination),
-							};
+				let ref: WhatsAppConversationRef;
+				if (groupMatch) {
+					const groupId = groupMatch[3];
+					if (!groupId) throw new InvalidWhatsAppConversationKeyError();
+					ref = { type: 'group', ...common, groupId: decodeURIComponent(groupId) };
+				} else {
+					const destinationType = individualMatch?.[3];
+					const destinationValue = individualMatch?.[4];
+					if (!destinationType || !destinationValue) {
+						throw new InvalidWhatsAppConversationKeyError();
+					}
+					ref = {
+						type: 'individual',
+						...common,
+						destination:
+							destinationType === 'phone-number'
+								? {
+										type: destinationType,
+										phoneNumber: decodeURIComponent(destinationValue),
+									}
+								: {
+										type: 'user-id',
+										userId: decodeURIComponent(destinationValue),
+									},
+					};
+				}
 				assertConversationRef(ref);
 				if (channel.conversationKey(ref) !== id) {
 					throw new InvalidWhatsAppConversationKeyError();
@@ -361,8 +426,18 @@ function assertConversationRef(ref: WhatsAppConversationRef): void {
 	assertSegment(ref.businessAccountId, 'conversation.businessAccountId');
 	assertSegment(ref.phoneNumberId, 'conversation.phoneNumberId');
 	if (ref.type === 'individual') {
-		assertSegment(ref.recipientId, 'conversation.recipientId');
-		return;
+		if (!ref.destination || typeof ref.destination !== 'object') {
+			throw new InvalidWhatsAppInputError('conversation.destination');
+		}
+		if (ref.destination.type === 'phone-number') {
+			assertSegment(ref.destination.phoneNumber, 'conversation.destination.phoneNumber');
+			return;
+		}
+		if (ref.destination.type === 'user-id') {
+			assertSegment(ref.destination.userId, 'conversation.destination.userId');
+			return;
+		}
+		throw new InvalidWhatsAppInputError('conversation.destination.type');
 	}
 	if (ref.type === 'group') {
 		assertSegment(ref.groupId, 'conversation.groupId');

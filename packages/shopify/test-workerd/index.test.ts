@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createShopifyChannel, type ShopifyChannel } from '../src/index.ts';
 
 const encoder = new TextEncoder();
@@ -7,13 +7,7 @@ const CURRENT_SECRET = 'flue-shopify-workerd-current';
 const PREVIOUS_SECRET = 'flue-shopify-workerd-previous';
 
 describe('@flue/shopify workerd ingress', () => {
-	afterEach(() => {
-		vi.unstubAllGlobals();
-	});
-
-	it('verifies exact bytes with Web Crypto when Node globals are unavailable', async () => {
-		vi.stubGlobal('process', undefined);
-		vi.stubGlobal('Buffer', undefined);
+	it('verifies exact bytes with Web Crypto in workerd', async () => {
 		const webhook = vi.fn();
 		const app = channelApp(
 			createShopifyChannel({
@@ -41,14 +35,12 @@ describe('@flue/shopify workerd ingress', () => {
 			},
 			rawBody: body,
 		});
-		expect(globalThis.process).toBeUndefined();
-		expect(globalThis.Buffer).toBeUndefined();
+		expect(globalThis.process).toBeDefined();
+		expect(globalThis.Buffer).toBeDefined();
 		expect(crypto.subtle).toBeDefined();
 	});
 
 	it('accepts a rotated previous secret and preserves an unknown topic in workerd', async () => {
-		vi.stubGlobal('process', undefined);
-		vi.stubGlobal('Buffer', undefined);
 		const webhook = vi.fn();
 		const app = channelApp(
 			createShopifyChannel({
@@ -71,13 +63,9 @@ describe('@flue/shopify workerd ingress', () => {
 			topic: 'future_resources/created',
 			payload: { future_resource: { id: 'gid://shopify/Future/17' } },
 		});
-		expect(globalThis.process).toBeUndefined();
-		expect(globalThis.Buffer).toBeUndefined();
 	});
 
 	it('enforces streamed body limits in workerd', async () => {
-		vi.stubGlobal('process', undefined);
-		vi.stubGlobal('Buffer', undefined);
 		const webhook = vi.fn();
 		const app = channelApp(
 			createShopifyChannel({
@@ -98,8 +86,6 @@ describe('@flue/shopify workerd ingress', () => {
 
 		expect(response.status).toBe(413);
 		expect(webhook).not.toHaveBeenCalled();
-		expect(globalThis.process).toBeUndefined();
-		expect(globalThis.Buffer).toBeUndefined();
 	});
 });
 

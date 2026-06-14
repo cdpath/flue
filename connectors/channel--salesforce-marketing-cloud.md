@@ -43,7 +43,7 @@ export interface SalesforceMarketingCloudClientOptions {
   fetcher?: typeof globalThis.fetch;
 }
 
-export interface SalesforceMarketingCloudCallback {
+interface SalesforceMarketingCloudCallback {
   callbackId: string;
   callbackName: string;
   url: string;

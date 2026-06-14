@@ -182,9 +182,9 @@ when the application intentionally wants redelivery.
 ## Test without Resend
 
 Run the project's focused typecheck and configured Node and Cloudflare checks.
-The SDK and verifier run in Node and workerd without `nodejs_compat`.
-Cloudflare projects should use their typed binding convention instead of
-assuming `process.env`.
+The SDK and verifier run in Node and workerd with Flue's required
+`nodejs_compat` configuration. Use the project's existing credential
+convention; both `process.env` and typed Worker bindings are supported.
 
 Use only original synthetic webhook bodies. Generate local signatures over the
 exact unchanged body:

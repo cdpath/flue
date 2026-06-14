@@ -178,11 +178,11 @@ If `flue()` has an outer mount prefix, include it in the configured URL.
 Subscribe only to event types the application handles.
 
 The official Stripe SDK exposes a `workerd` implementation backed by Fetch and
-Web Crypto. For Cloudflare projects, follow the existing typed binding
-convention instead of assuming `process.env`. The supported workerd path runs
-without `nodejs_compat`; the completed project must still execute webhook
-verification and one fake-transport client request in workerd and pass its
-actual Cloudflare build.
+Web Crypto. For Cloudflare projects, use the existing credential convention;
+Flue's required `nodejs_compat` configuration supports `process.env`, and
+typed Worker bindings remain an option. The completed project must execute
+webhook verification and one fake-transport client request in workerd under
+that configuration and pass its actual Cloudflare build.
 
 Run the project's typecheck and configured Node and Cloudflare builds. Generate
 original local snapshot and thin payloads with `Stripe-Signature` HMACs. Test

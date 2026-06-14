@@ -8,6 +8,7 @@ import type {
 	WhatsAppMedia,
 	WhatsAppMessage,
 	WhatsAppMessageContext,
+	WhatsAppMessageSenderIdentity,
 	WhatsAppReferral,
 	WhatsAppSharedContact,
 	WhatsAppStatusEvent,
@@ -143,20 +144,10 @@ function normalizeDelivery<E extends Env>(
 					if (!isRecord(messageRaw)) return { type: 'invalid' };
 					const message = normalizeMessage(messageRaw);
 					if (!message) return { type: 'invalid' };
-					const sender = senderForMessage(message.from, contacts);
-					const conversation = message.groupId
-						? {
-								type: 'group' as const,
-								businessAccountId,
-								phoneNumberId,
-								groupId: message.groupId,
-							}
-						: {
-								type: 'individual' as const,
-								businessAccountId,
-								phoneNumberId,
-								recipientId: message.from,
-							};
+					const sender = senderForMessage(message, contacts);
+					if (!sender) return { type: 'invalid' };
+					const conversation = conversationForMessage(message, businessAccountId, phoneNumberId);
+					if (!conversation) return { type: 'invalid' };
 					events.push({
 						type: 'message',
 						businessAccountId,
@@ -221,18 +212,44 @@ function normalizeDelivery<E extends Env>(
 function normalizeMessage(raw: Record<string, unknown>): WhatsAppMessage | undefined {
 	const id = readNonEmptyString(raw, 'id');
 	const from = readNonEmptyString(raw, 'from');
+	const fromUserId = readNonEmptyString(raw, 'from_user_id');
+	const fromParentUserId = readNonEmptyString(raw, 'from_parent_user_id');
 	const timestamp = readUnixTimestamp(raw, 'timestamp');
 	const messageType = readNonEmptyString(raw, 'type');
-	if (!id || !from || timestamp === undefined || !messageType) return undefined;
+	if (
+		!id ||
+		(!from && !fromUserId) ||
+		(raw.from !== undefined && !from) ||
+		(raw.from_user_id !== undefined && !fromUserId) ||
+		(raw.from_parent_user_id !== undefined && !fromParentUserId) ||
+		timestamp === undefined ||
+		!messageType
+	) {
+		return undefined;
+	}
 	const groupId = readOptionalString(raw, 'group_id');
 	if (raw.group_id !== undefined && !groupId) return undefined;
 	const context = normalizeContext(raw.context);
 	if (context === null) return undefined;
 	const referral = normalizeReferral(raw.referral);
 	if (referral === null) return undefined;
+	let identity: WhatsAppMessageSenderIdentity;
+	if (fromUserId) {
+		identity = {
+			...(from === undefined ? {} : { from }),
+			fromUserId,
+			...(fromParentUserId === undefined ? {} : { fromParentUserId }),
+		};
+	} else {
+		if (!from) return undefined;
+		identity = {
+			from,
+			...(fromParentUserId === undefined ? {} : { fromParentUserId }),
+		};
+	}
 	const base = {
 		id,
-		from,
+		...identity,
 		timestamp,
 		...(groupId === undefined ? {} : { groupId }),
 		...(context === undefined ? {} : { context }),
@@ -375,22 +392,43 @@ function normalizeStatus(
 	const providerState = readNonEmptyString(raw, 'status');
 	const timestamp = readUnixTimestamp(raw, 'timestamp');
 	const recipientId = readNonEmptyString(raw, 'recipient_id');
-	if (!messageId || !providerState || timestamp === undefined || !recipientId) {
+	const recipientUserId = readNonEmptyString(raw, 'recipient_user_id');
+	const recipientParentUserId = readNonEmptyString(raw, 'recipient_parent_user_id');
+	if (
+		!messageId ||
+		!providerState ||
+		timestamp === undefined ||
+		(!recipientId && !recipientUserId) ||
+		(raw.recipient_id !== undefined && !recipientId) ||
+		(raw.recipient_user_id !== undefined && !recipientUserId) ||
+		(raw.recipient_parent_user_id !== undefined && !recipientParentUserId)
+	) {
 		return undefined;
 	}
 	const recipientType = readOptionalString(raw, 'recipient_type');
 	if (recipientType !== undefined && recipientType !== 'group' && recipientType !== 'individual') {
 		return undefined;
 	}
-	const conversation: WhatsAppConversationRef =
-		recipientType === 'group'
-			? { type: 'group', businessAccountId, phoneNumberId, groupId: recipientId }
-			: {
-					type: 'individual',
-					businessAccountId,
-					phoneNumberId,
-					recipientId,
-				};
+	let conversation: WhatsAppConversationRef;
+	if (recipientType === 'group') {
+		if (!recipientId) return undefined;
+		conversation = { type: 'group', businessAccountId, phoneNumberId, groupId: recipientId };
+	} else if (recipientUserId) {
+		conversation = {
+			type: 'individual',
+			businessAccountId,
+			phoneNumberId,
+			destination: { type: 'user-id', userId: recipientUserId },
+		};
+	} else {
+		if (!recipientId) return undefined;
+		conversation = {
+			type: 'individual',
+			businessAccountId,
+			phoneNumberId,
+			destination: { type: 'phone-number', phoneNumber: recipientId },
+		};
+	}
 	const conversationObject = readRecord(raw, 'conversation');
 	const origin = conversationObject ? readRecord(conversationObject, 'origin') : undefined;
 	const errors = normalizeErrors(raw.errors);
@@ -411,8 +449,20 @@ function normalizeStatus(
 				: 'unknown',
 			providerState,
 			timestamp,
-			recipientId,
+			...(recipientId === undefined ? {} : { recipientId }),
+			...(recipientUserId === undefined ? {} : { recipientUserId }),
+			...(recipientParentUserId === undefined ? {} : { recipientParentUserId }),
 			...optionalRenamedStringProperty(raw, 'recipient_participant_id', 'recipientParticipantId'),
+			...optionalRenamedStringProperty(
+				raw,
+				'recipient_participant_user_id',
+				'recipientParticipantUserId',
+			),
+			...optionalRenamedStringProperty(
+				raw,
+				'recipient_participant_parent_user_id',
+				'recipientParticipantParentUserId',
+			),
 			...optionalRenamedStringProperty(raw, 'biz_opaque_callback_data', 'opaqueCallbackData'),
 			...(conversationObject
 				? optionalRenamedStringProperty(conversationObject, 'id', 'conversationId')
@@ -425,29 +475,135 @@ function normalizeStatus(
 	};
 }
 
-function normalizeSenderContacts(value: unknown): readonly Record<string, unknown>[] | null {
+function conversationForMessage(
+	message: WhatsAppMessage,
+	businessAccountId: string,
+	phoneNumberId: string,
+): WhatsAppConversationRef | undefined {
+	if (message.groupId) {
+		return {
+			type: 'group',
+			businessAccountId,
+			phoneNumberId,
+			groupId: message.groupId,
+		};
+	}
+	if (message.fromUserId) {
+		return {
+			type: 'individual',
+			businessAccountId,
+			phoneNumberId,
+			destination: { type: 'user-id', userId: message.fromUserId },
+		};
+	}
+	if (!message.from) return undefined;
+	return {
+		type: 'individual',
+		businessAccountId,
+		phoneNumberId,
+		destination: { type: 'phone-number', phoneNumber: message.from },
+	};
+}
+
+interface SenderContact {
+	phoneNumber?: string;
+	userId?: string;
+	parentUserId?: string;
+	profileName?: string;
+	username?: string;
+}
+
+function normalizeSenderContacts(value: unknown): readonly SenderContact[] | null {
 	if (value === undefined) return [];
 	if (!Array.isArray(value)) return null;
-	const contacts: Record<string, unknown>[] = [];
-	for (const contact of value) {
-		if (!isRecord(contact)) return null;
-		contacts.push(contact);
+	const contacts: SenderContact[] = [];
+	for (const raw of value) {
+		if (!isRecord(raw)) return null;
+		const phoneNumber = readNonEmptyString(raw, 'wa_id');
+		const userId = readNonEmptyString(raw, 'user_id');
+		const parentUserId = readNonEmptyString(raw, 'parent_user_id');
+		const profile = readRecord(raw, 'profile');
+		if (
+			(!phoneNumber && !userId) ||
+			(raw.wa_id !== undefined && !phoneNumber) ||
+			(raw.user_id !== undefined && !userId) ||
+			(raw.parent_user_id !== undefined && !parentUserId) ||
+			(raw.profile !== undefined && !profile)
+		) {
+			return null;
+		}
+		const profileName = profile ? readOptionalString(profile, 'name') : undefined;
+		const username = profile ? readOptionalString(profile, 'username') : undefined;
+		if (
+			(profile?.name !== undefined && profileName === undefined) ||
+			(profile?.username !== undefined && username === undefined)
+		) {
+			return null;
+		}
+		contacts.push({
+			...(phoneNumber === undefined ? {} : { phoneNumber }),
+			...(userId === undefined ? {} : { userId }),
+			...(parentUserId === undefined ? {} : { parentUserId }),
+			...(profileName === undefined ? {} : { profileName }),
+			...(username === undefined ? {} : { username }),
+		});
 	}
 	return contacts;
 }
 
 function senderForMessage(
-	phoneNumber: string,
-	contacts: readonly Record<string, unknown>[],
-): WhatsAppUserRef {
-	const contact = contacts[0];
-	const profile = contact ? readRecord(contact, 'profile') : undefined;
-	const userId = contact ? readOptionalString(contact, 'wa_id') : undefined;
-	const profileName = profile ? readOptionalString(profile, 'name') : undefined;
+	message: WhatsAppMessage,
+	contacts: readonly SenderContact[],
+): WhatsAppUserRef | undefined {
+	const contact = contacts.find((candidate) => {
+		const sharesIdentity =
+			(message.from !== undefined && candidate.phoneNumber === message.from) ||
+			(message.fromUserId !== undefined && candidate.userId === message.fromUserId);
+		if (!sharesIdentity) return false;
+		if (
+			message.from !== undefined &&
+			candidate.phoneNumber !== undefined &&
+			message.from !== candidate.phoneNumber
+		) {
+			return false;
+		}
+		if (
+			message.fromUserId !== undefined &&
+			candidate.userId !== undefined &&
+			message.fromUserId !== candidate.userId
+		) {
+			return false;
+		}
+		if (
+			message.fromParentUserId !== undefined &&
+			candidate.parentUserId !== undefined &&
+			message.fromParentUserId !== candidate.parentUserId
+		) {
+			return false;
+		}
+		return true;
+	});
+	if (contacts.length > 0 && !contact) return undefined;
+	const phoneNumber = contact?.phoneNumber ?? message.from;
+	const userId = contact?.userId ?? message.fromUserId;
+	const parentUserId = contact?.parentUserId ?? message.fromParentUserId;
+	if (!phoneNumber && !userId) return undefined;
+	const metadata = {
+		...(parentUserId === undefined ? {} : { parentUserId }),
+		...(contact?.profileName === undefined ? {} : { profileName: contact.profileName }),
+		...(contact?.username === undefined ? {} : { username: contact.username }),
+	};
+	if (userId) {
+		return {
+			...metadata,
+			...(phoneNumber === undefined ? {} : { phoneNumber }),
+			userId,
+		};
+	}
+	if (!phoneNumber) return undefined;
 	return {
+		...metadata,
 		phoneNumber,
-		...(userId === undefined ? {} : { userId }),
-		...(profileName === undefined ? {} : { profileName }),
 	};
 }
 

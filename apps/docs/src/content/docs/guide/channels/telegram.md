@@ -13,7 +13,7 @@ flue add telegram --print | codex
 
 It installs `@flue/telegram` for verified ingress and grammY for project-owned
 Bot API access. grammY publishes a browser/Fetch build that runs in both Node
-and Cloudflare Workers without `nodejs_compat`.
+and workerd with Flue's required `nodejs_compat` configuration.
 
 Set the webhook URL to:
 
@@ -24,10 +24,7 @@ https://example.com/channels/telegram/webhook
 ## Channel module
 
 ```ts title="src/channels/telegram.ts"
-import {
-  createTelegramChannel,
-  type TelegramConversationRef,
-} from '@flue/telegram';
+import { createTelegramChannel, type TelegramConversationRef } from '@flue/telegram';
 import { defineTool, dispatch } from '@flue/runtime';
 import { Api } from 'grammy';
 import assistant from '../agents/assistant.ts';
@@ -86,9 +83,7 @@ export function postMessage(ref: TelegramConversationRef) {
         ...(ref.type === 'business-chat'
           ? { business_connection_id: ref.businessConnectionId }
           : {}),
-        ...(ref.messageThreadId
-          ? { message_thread_id: ref.messageThreadId }
-          : {}),
+        ...(ref.messageThreadId ? { message_thread_id: ref.messageThreadId } : {}),
         ...(ref.directMessagesTopicId
           ? { direct_messages_topic_id: ref.directMessagesTopicId }
           : {}),

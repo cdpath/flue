@@ -94,12 +94,12 @@ export function commentOnIssue(ref: { owner: string; repo: string; issueNumber: 
 }
 ```
 
-For Cloudflare projects, follow the project's typed binding convention and use
-`env` from `cloudflare:workers` when a module-level client needs Worker
-bindings. Do not assume `process.env` is the project's chosen Worker secret
-interface. Octokit's typed REST request path is Fetch-based and executes in
-workerd without `nodejs_compat`, but the completed project must still pass its
-actual Cloudflare build.
+For Cloudflare projects, follow the project's existing credential convention.
+Flue enables `nodejs_compat`, so `process.env` is supported; typed bindings
+from `cloudflare:workers` are also valid when the project prefers them.
+Octokit's typed REST request path must execute in workerd under that canonical
+configuration, and the completed project must pass its actual Cloudflare
+build.
 
 If the user did not ask for issue comments, replace or omit the example tool.
 Never let the model choose arbitrary owners, repositories, issue numbers, API

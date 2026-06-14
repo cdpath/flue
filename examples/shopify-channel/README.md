@@ -58,10 +58,8 @@ installation, OAuth, token lookup, webhook registration, deduplication,
 ordering, or fulfillment.
 
 The Node and workerd tests execute the real Admin API client against local
-fail-closed Fetch implementations. The workerd client suite runs without
-`nodejs_compat`, `process`, or `Buffer`. The full Flue Cloudflare build
-currently adds `nodejs_compat` for Flue's own runtime; the Shopify client does
-not require it:
+fail-closed Fetch implementations. The workerd client suite runs with Flue's
+required `nodejs_compat` configuration:
 
 ```sh
 pnpm run check:types

@@ -18,8 +18,9 @@ export const channel = createWhatsAppChannel({
 
 The package owns GET verification, exact-body signature validation, fixed
 business identity checks, typed event normalization, batch preservation,
-response handling, and canonical conversation identity. Applications own
-access tokens, outbound clients, tools, dispatch policy, and deduplication.
+response handling, and canonical phone, Business-Scoped User ID, and group
+conversation identity. Applications own access tokens, outbound clients,
+tools, dispatch policy, and deduplication.
 
 See the prepared package docs or
 <https://flueframework.com/docs/guide/channels/whatsapp/>.

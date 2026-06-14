@@ -99,9 +99,10 @@ filename, and voice flag when supplied. Authenticated transport URLs remain
 available only under verified `raw`.
 
 Status events expose the outbound message id, provider status, timestamp,
-recipient, optional callback data and conversation metadata, and normalized
-errors. Known `state` values are `sent`, `delivered`, `read`, `played`, and
-`failed`; other signed values use `unknown` while preserving `providerState`.
+optional phone and Business-Scoped User ID recipients, optional callback data
+and conversation metadata, and normalized errors. Known `state` values are
+`sent`, `delivered`, `read`, `played`, and `failed`; other signed values use
+`unknown` while preserving `providerState`.
 
 Unknown change fields use `WhatsAppUnknownEvent`.
 
@@ -113,7 +114,15 @@ type WhatsAppConversationRef =
       type: 'individual';
       businessAccountId: string;
       phoneNumberId: string;
-      recipientId: string;
+      destination:
+        | {
+            type: 'phone-number';
+            phoneNumber: string;
+          }
+        | {
+            type: 'user-id';
+            userId: string;
+          };
     }
   | {
       type: 'group';
@@ -123,8 +132,18 @@ type WhatsAppConversationRef =
     };
 ```
 
-Individual `recipientId` is the inbound message `from` value or outbound status
-recipient. `WhatsAppUserRef.userId` separately preserves `wa_id` when supplied.
+Individual destinations distinguish phone numbers from Meta Business-Scoped
+User IDs so equal strings in different identity namespaces cannot collide.
+When a verified payload supplies both, the event conversation uses the BSUID;
+legacy messages and failed statuses can fall back to a phone destination.
+Groups remain keyed by provider group id.
+
+`WhatsAppUserRef` preserves optional phone number, BSUID, parent BSUID, profile
+name, and username fields. `WhatsAppMessage` likewise exposes optional `from`,
+`fromUserId`, and `fromParentUserId` fields while normalization requires at
+least one usable sender identity. Status values expose optional `recipientId`,
+`recipientUserId`, and `recipientParentUserId`; group status values can also
+include participant phone and BSUID fields.
 
 ## Errors
 

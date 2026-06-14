@@ -150,7 +150,7 @@ describe('flue add', () => {
 		assert.ok(result.stdout.includes('/channels/stripe/webhook'));
 		assert.ok(result.stdout.includes('Stripe.createFetchHttpClient()'));
 		assert.ok(result.stdout.includes("eventPayload: 'thin'"));
-		assert.ok(result.stdout.includes('without `nodejs_compat`'));
+		assert.ok(result.stdout.includes('nodejs_compat'));
 	});
 
 	it('prints the Notion recipe with setup and signed-event guidance', async () => {
@@ -162,7 +162,7 @@ describe('flue add', () => {
 		assert.ok(result.stdout.includes('/channels/notion/webhook'));
 		assert.ok(result.stdout.includes('verification_token'));
 		assert.ok(result.stdout.includes('X-Notion-Signature'));
-		assert.ok(result.stdout.includes('without `nodejs_compat`'));
+		assert.ok(result.stdout.includes('nodejs_compat'));
 	});
 
 	it('prints the Resend recipe with signed ingress and fake-client guidance', async () => {
@@ -176,7 +176,7 @@ describe('flue add', () => {
 		assert.ok(result.stdout.includes('/channels/resend/webhook'));
 		assert.ok(result.stdout.includes('svix-signature'));
 		assert.ok(result.stdout.includes('delivery.id'));
-		assert.ok(result.stdout.includes('without `nodejs_compat`'));
+		assert.ok(result.stdout.includes('nodejs_compat'));
 		assert.ok(result.stdout.includes('fake transport'));
 		assert.ok(result.stdout.includes('Never create a receiving domain'));
 	});
@@ -194,7 +194,7 @@ describe('flue add', () => {
 		assert.ok(result.stdout.includes('X-Shopify-Hmac-Sha256'));
 		assert.ok(result.stdout.includes('previousClientSecret'));
 		assert.ok(result.stdout.includes('customFetchApi'));
-		assert.ok(result.stdout.includes('without `nodejs_compat`'));
+		assert.ok(result.stdout.includes('nodejs_compat'));
 		assert.ok(result.stdout.includes('Never register a live webhook'));
 	});
 

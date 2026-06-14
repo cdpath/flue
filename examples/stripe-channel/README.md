@@ -47,8 +47,8 @@ real-time Issuing authorization have stricter response semantics and are not
 represented by this asynchronous Checkout example.
 
 Node and workerd tests execute the real Stripe Fetch client against original
-local responses without contacting Stripe. The workerd suite runs without
-`nodejs_compat`.
+local responses without contacting Stripe. The workerd suite runs with Flue's
+required `nodejs_compat` configuration.
 
 The channel module imports the agent and the agent imports the channel helpers.
 This cycle is safe because imported bindings are read only inside the webhook

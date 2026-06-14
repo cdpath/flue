@@ -13,7 +13,8 @@ flue add whatsapp --print | codex
 
 It installs `@flue/whatsapp` for verified ingress and
 `@kapso/whatsapp-cloud-api` for project-owned Graph API access. The client is
-Fetch-based and runs in Node and Cloudflare Workers without `nodejs_compat`.
+Fetch-based and runs in Node and workerd with Flue's required `nodejs_compat`
+configuration.
 
 Set the callback URL to:
 
@@ -26,7 +27,7 @@ https://example.com/channels/whatsapp/webhook
 ```ts title="src/channels/whatsapp.ts"
 import { createWhatsAppChannel, type WhatsAppConversationRef } from '@flue/whatsapp';
 import { defineTool, dispatch } from '@flue/runtime';
-import { WhatsAppClient } from '@kapso/whatsapp-cloud-api';
+import { WhatsAppClient, type SendMessageResponse } from '@kapso/whatsapp-cloud-api';
 import assistant from '../agents/assistant.ts';
 
 export const client = new WhatsAppClient({
@@ -57,8 +58,36 @@ export const channel = createWhatsAppChannel({
   },
 });
 
+function sendTextMessage(ref: WhatsAppConversationRef, body: string): Promise<SendMessageResponse> {
+  if (ref.type === 'group') {
+    return client.messages.sendText({
+      phoneNumberId: ref.phoneNumberId,
+      recipientType: 'group',
+      to: ref.groupId,
+      body,
+    });
+  }
+  if (ref.destination.type === 'phone-number') {
+    return client.messages.sendText({
+      phoneNumberId: ref.phoneNumberId,
+      recipientType: 'individual',
+      to: ref.destination.phoneNumber,
+      body,
+    });
+  }
+  return client.request<SendMessageResponse>('POST', `${ref.phoneNumberId}/messages`, {
+    body: {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      recipient: ref.destination.userId,
+      type: 'text',
+      text: { body },
+    },
+    responseType: 'json',
+  });
+}
+
 export function postMessage(ref: WhatsAppConversationRef) {
-  const to = ref.type === 'group' ? ref.groupId : ref.recipientId;
   return defineTool({
     name: 'post_whatsapp_message',
     description: 'Post to the WhatsApp conversation bound to this agent.',
@@ -71,12 +100,7 @@ export function postMessage(ref: WhatsAppConversationRef) {
       additionalProperties: false,
     },
     async execute({ text }) {
-      const result = await client.messages.sendText({
-        phoneNumberId: ref.phoneNumberId,
-        recipientType: ref.type,
-        to,
-        body: text,
-      });
+      const result = await sendTextMessage(ref, text);
       return JSON.stringify({ messageId: result.messages[0]?.id });
     },
   });
@@ -118,10 +142,17 @@ message identity.
 
 ## Conversation identity
 
-Individual destinations use the inbound sender phone number because that is the
-value accepted by the send API. Meta's separate `wa_id` remains sender metadata
-because the two values may differ. Group destinations use the provider group
-id.
+Meta now supplies a Business-Scoped User ID in incoming message webhooks and
+may omit the sender phone number. Individual conversation destinations
+therefore distinguish `phone-number` from `user-id`, prefer the BSUID when both
+are present, and use the matching `to` or `recipient` outbound field. Group
+destinations use the provider group id.
+
+The current SDK release exposes broad Graph API helpers but its high-level text
+helper models only `to`. The example keeps the full exported SDK client and
+uses its authenticated low-level `request()` method for the documented BSUID
+`recipient` shape. Test each relied-on operation against fake Fetch in Node and
+workerd.
 
 Normalized media includes the stable asset id but omits bearer-authenticated
 download URLs. Use the project-owned client for retrieval, and avoid forwarding

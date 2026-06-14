@@ -14,7 +14,7 @@ flue add twilio --print | codex
 It installs `@flue/twilio` for verified ingress and creates an editable Fetch
 client for outbound Programmable Messaging. The official Twilio Node helper is
 not the canonical path because it is Node-only; the generated REST client runs
-in Node and Cloudflare Workers without compatibility flags.
+in Node and workerd with Flue's required `nodejs_compat` configuration.
 
 Set the inbound webhook URL to:
 

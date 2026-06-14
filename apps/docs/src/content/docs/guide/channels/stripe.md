@@ -168,11 +168,12 @@ resource fields as untrusted rather than weakening the native narrowing for
 every known event.
 
 The official Stripe SDK selects its Fetch and Web Crypto implementation in
-Cloudflare Workers, so Stripe does not require `nodejs_compat`. Cloudflare
-projects should initialize credentials from their typed Worker bindings and
-still verify their complete target build and workerd tests. Stripe's
-declarations reference `@types/node` even on this runtime path; that package is
-type-only and does not add Node code to the Worker bundle.
+Cloudflare Workers. The example executes that path in workerd with Flue's
+required `nodejs_compat` configuration. Projects may initialize credentials
+through `process.env` or typed Worker bindings and should still verify their
+complete target build and workerd tests. Stripe's declarations reference
+`@types/node`; that package is type-only and does not add Node code to the
+Worker bundle.
 
 The channel does not register event destinations, rotate signing secrets,
 manage OAuth or API keys, deduplicate events, restore ordering, or define

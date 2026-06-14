@@ -207,9 +207,9 @@ client selection remain application concerns.
 ## Runtime and delivery behavior
 
 Ordinary `@notionhq/client` API calls use the injected Fetch implementation and
-work in Cloudflare Workers without `nodejs_compat`. The client's OAuth methods
-currently build Basic authentication with Node `Buffer`; OAuth is outside this
-recipe and must not be inferred from ordinary API-call compatibility.
+execute in workerd with Flue's required `nodejs_compat` configuration. OAuth is
+outside this recipe; validate any additional SDK operations the application
+chooses to ship.
 
 Known events use the official SDK's provider-native webhook payload types.
 Future verified event types arrive as `type: 'unknown'` with `eventType`,

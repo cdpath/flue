@@ -18,7 +18,7 @@ describe('@flue/whatsapp workerd ingress', () => {
 		for (const route of whatsapp.routes) {
 			app.on(route.method, route.path, route.handler);
 		}
-		const body = `{"entry":[{"changes":[{"value":{"messages":[{"text":{"body":"Worker delivery"},"type":"text","timestamp":"1781200501","from":"+15557005017","id":"wamid_worker_17"}],"metadata":{"phone_number_id":"phone_worker_17","display_phone_number":"+1 555 700 5017"},"messaging_product":"whatsapp"},"field":"messages"}],"id":"waba_worker_17"}],"object":"whatsapp_business_account"}`;
+		const body = `{"entry":[{"changes":[{"value":{"contacts":[{"profile":{"name":"Worker User","username":"worker.synthetic"},"user_id":"US.synthetic-worker-17"}],"messages":[{"text":{"body":"Worker delivery"},"type":"text","timestamp":"1781200501","from_user_id":"US.synthetic-worker-17","id":"wamid_worker_17"}],"metadata":{"phone_number_id":"phone_worker_17","display_phone_number":"+1 555 700 5017"},"messaging_product":"whatsapp"},"field":"messages"}],"id":"waba_worker_17"}],"object":"whatsapp_business_account"}`;
 		const signature = await hmac('worker_app_secret', body);
 
 		const accepted = await app.request(
@@ -54,9 +54,16 @@ describe('@flue/whatsapp workerd ingress', () => {
 			{
 				type: 'message',
 				message: { kind: 'text', text: 'Worker delivery' },
+				sender: {
+					userId: 'US.synthetic-worker-17',
+					username: 'worker.synthetic',
+				},
 				conversation: {
 					type: 'individual',
-					recipientId: '+15557005017',
+					destination: {
+						type: 'user-id',
+						userId: 'US.synthetic-worker-17',
+					},
 				},
 			},
 		]);

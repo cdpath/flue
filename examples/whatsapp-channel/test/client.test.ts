@@ -1,12 +1,19 @@
+import type { WhatsAppConversationRef } from '@flue/whatsapp';
 import { WhatsAppClient } from '@kapso/whatsapp-cloud-api';
 import { describe, expect, it, vi } from 'vitest';
+import { sendTextMessage } from '../src/whatsapp-client.ts';
 
-describe('WhatsAppClient', () => {
-	it('sends a text message through Fetch in Node', async () => {
+describe('sendTextMessage()', () => {
+	it('sends a BSUID text message through the authenticated SDK request path in Node', async () => {
 		const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
 			Response.json({
 				messaging_product: 'whatsapp',
-				contacts: [{ input: '+15557006202', wa_id: 'user_6202' }],
+				contacts: [
+					{
+						input: 'US.synthetic-node-6202',
+						user_id: 'US.synthetic-node-6202',
+					},
+				],
 				messages: [{ id: 'wamid_outbound_node' }],
 			}),
 		);
@@ -15,12 +22,17 @@ describe('WhatsAppClient', () => {
 			graphVersion: 'v25.0',
 			fetch,
 		});
-
-		const result = await client.messages.sendText({
+		const ref: WhatsAppConversationRef = {
+			type: 'individual',
+			businessAccountId: 'waba_node_62',
 			phoneNumberId: 'phone_node_62',
-			to: '+15557006202',
-			body: 'Node response',
-		});
+			destination: {
+				type: 'user-id',
+				userId: 'US.synthetic-node-6202',
+			},
+		};
+
+		const result = await sendTextMessage(client, ref, 'Node response');
 
 		expect(result.messages[0]?.id).toBe('wamid_outbound_node');
 		expect(String(fetch.mock.calls[0]?.[0])).toBe(
@@ -29,7 +41,7 @@ describe('WhatsAppClient', () => {
 		expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
 			messaging_product: 'whatsapp',
 			recipient_type: 'individual',
-			to: '+15557006202',
+			recipient: 'US.synthetic-node-6202',
 			type: 'text',
 			text: { body: 'Node response' },
 		});

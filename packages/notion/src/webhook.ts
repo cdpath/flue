@@ -1,4 +1,4 @@
-import type { Context, Env, Handler } from 'hono';
+import type { Env, Handler } from 'hono';
 import type {
 	JsonValue,
 	NotionChannelOptions,

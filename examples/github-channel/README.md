@@ -27,7 +27,8 @@ but this example deliberately uses one agent instance for the containing pull
 request and posts responses to its conversation timeline.
 
 The typed Octokit `issues.createComment()` path is exercised in workerd through
-its Fetch transport without `nodejs_compat` and without contacting GitHub.
+its Fetch transport with Flue's required `nodejs_compat` configuration and
+without contacting GitHub.
 
 The channel module imports the agent and the agent imports the channel. This
 cycle is safe because the imported bindings are read only inside the webhook

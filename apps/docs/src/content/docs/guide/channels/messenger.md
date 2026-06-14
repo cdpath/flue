@@ -13,7 +13,7 @@ flue add messenger --print | codex
 
 It installs `@flue/messenger` for verified Page ingress and creates an editable
 Graph API Fetch client for outbound messages. The same client runs in Node and
-Cloudflare Workers without compatibility flags.
+workerd with Flue's required `nodejs_compat` configuration.
 
 Configure Meta to use:
 

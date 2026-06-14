@@ -65,7 +65,7 @@ describe('createWhatsAppChannel()', () => {
 								},
 								contacts: [
 									{
-										wa_id: 'user_amber_14',
+										wa_id: '+15557001414',
 										profile: { name: 'Amber Quill' },
 									},
 								],
@@ -100,6 +100,7 @@ describe('createWhatsAppChannel()', () => {
 										status: 'delivered',
 										timestamp: '1781200103',
 										recipient_id: '+15557001414',
+										recipient_user_id: 'US.synthetic-amber-14',
 										biz_opaque_callback_data: 'ticket_778',
 										conversation: {
 											id: 'conversation_cedar',
@@ -139,14 +140,16 @@ describe('createWhatsAppChannel()', () => {
 						phoneNumberId: 'phone_9202',
 						sender: {
 							phoneNumber: '+15557001414',
-							userId: 'user_amber_14',
 							profileName: 'Amber Quill',
 						},
 						conversation: {
 							type: 'individual',
 							businessAccountId: 'waba_8202',
 							phoneNumberId: 'phone_9202',
-							recipientId: '+15557001414',
+							destination: {
+								type: 'phone-number',
+								phoneNumber: '+15557001414',
+							},
 						},
 						message: {
 							kind: 'text',
@@ -180,10 +183,18 @@ describe('createWhatsAppChannel()', () => {
 							state: 'delivered',
 							providerState: 'delivered',
 							recipientId: '+15557001414',
+							recipientUserId: 'US.synthetic-amber-14',
 							opaqueCallbackData: 'ticket_778',
 							conversationId: 'conversation_cedar',
 							conversationCategory: 'service',
 							errors: [],
+						},
+						conversation: {
+							type: 'individual',
+							destination: {
+								type: 'user-id',
+								userId: 'US.synthetic-amber-14',
+							},
 						},
 					},
 					{
@@ -195,6 +206,110 @@ describe('createWhatsAppChannel()', () => {
 				],
 			},
 		});
+	});
+
+	it('accepts BSUID-only messages and statuses when phone numbers are omitted', async () => {
+		const webhook = vi.fn();
+		const whatsapp = createWhatsAppChannel({
+			appSecret: 'app_secret_bsuid',
+			verifyToken: 'verify_token_bsuid',
+			businessAccountId: 'waba_8252',
+			phoneNumberId: 'phone_9252',
+			webhook,
+		});
+		const raw = {
+			object: 'whatsapp_business_account',
+			entry: [
+				{
+					id: 'waba_8252',
+					changes: [
+						{
+							field: 'messages',
+							value: {
+								messaging_product: 'whatsapp',
+								metadata: {
+									display_phone_number: '+1 555 700 9252',
+									phone_number_id: 'phone_9252',
+								},
+								contacts: [
+									{
+										profile: {
+											name: 'Sora Vale',
+											username: 'sora.synthetic',
+										},
+										user_id: 'US.synthetic-user-8252',
+										parent_user_id: 'US.ENT.synthetic-parent-8252',
+									},
+								],
+								messages: [
+									{
+										id: 'wamid_bsuid_message',
+										from_user_id: 'US.synthetic-user-8252',
+										from_parent_user_id: 'US.ENT.synthetic-parent-8252',
+										timestamp: '1781200151',
+										type: 'text',
+										text: { body: 'Phone number intentionally unavailable.' },
+									},
+								],
+								statuses: [
+									{
+										id: 'wamid_bsuid_status',
+										status: 'delivered',
+										timestamp: '1781200152',
+										recipient_user_id: 'US.synthetic-user-8252',
+										recipient_parent_user_id: 'US.ENT.synthetic-parent-8252',
+									},
+								],
+							},
+						},
+					],
+				},
+			],
+		};
+
+		const response = await channelApp(whatsapp).request(
+			await signedRequest(raw, 'app_secret_bsuid'),
+		);
+
+		expect(response.status).toBe(200);
+		expect(webhook).toHaveBeenCalledOnce();
+		expect(webhook.mock.calls[0]?.[0].delivery.events).toMatchObject([
+			{
+				type: 'message',
+				sender: {
+					userId: 'US.synthetic-user-8252',
+					parentUserId: 'US.ENT.synthetic-parent-8252',
+					profileName: 'Sora Vale',
+					username: 'sora.synthetic',
+				},
+				message: {
+					kind: 'text',
+					fromUserId: 'US.synthetic-user-8252',
+					fromParentUserId: 'US.ENT.synthetic-parent-8252',
+				},
+				conversation: {
+					type: 'individual',
+					destination: {
+						type: 'user-id',
+						userId: 'US.synthetic-user-8252',
+					},
+				},
+			},
+			{
+				type: 'status',
+				status: {
+					recipientUserId: 'US.synthetic-user-8252',
+					recipientParentUserId: 'US.ENT.synthetic-parent-8252',
+				},
+				conversation: {
+					type: 'individual',
+					destination: {
+						type: 'user-id',
+						userId: 'US.synthetic-user-8252',
+					},
+				},
+			},
+		]);
 	});
 
 	it('normalizes media, location, contacts, reactions, revocations, and unsupported messages', async () => {
@@ -517,6 +632,85 @@ describe('createWhatsAppChannel()', () => {
 		expect(webhook).not.toHaveBeenCalled();
 	});
 
+	it('rejects messages and statuses without any usable user identity', async () => {
+		const webhook = vi.fn();
+		const whatsapp = createWhatsAppChannel({
+			appSecret: 'app_secret_identity',
+			verifyToken: 'verify_token_identity',
+			businessAccountId: 'waba_8555',
+			phoneNumberId: 'phone_9555',
+			webhook,
+		});
+		const base = {
+			messaging_product: 'whatsapp',
+			metadata: {
+				display_phone_number: '+1 555 700 9555',
+				phone_number_id: 'phone_9555',
+			},
+		};
+		const missingMessageIdentity = await channelApp(whatsapp).request(
+			await signedRequest(
+				{
+					object: 'whatsapp_business_account',
+					entry: [
+						{
+							id: 'waba_8555',
+							changes: [
+								{
+									field: 'messages',
+									value: {
+										...base,
+										messages: [
+											{
+												id: 'wamid_missing_sender',
+												timestamp: '1781200351',
+												type: 'text',
+												text: { body: 'Missing sender identity.' },
+											},
+										],
+									},
+								},
+							],
+						},
+					],
+				},
+				'app_secret_identity',
+			),
+		);
+		const missingStatusIdentity = await channelApp(whatsapp).request(
+			await signedRequest(
+				{
+					object: 'whatsapp_business_account',
+					entry: [
+						{
+							id: 'waba_8555',
+							changes: [
+								{
+									field: 'messages',
+									value: {
+										...base,
+										statuses: [
+											{
+												id: 'wamid_missing_recipient',
+												status: 'failed',
+												timestamp: '1781200352',
+											},
+										],
+									},
+								},
+							],
+						},
+					],
+				},
+				'app_secret_identity',
+			),
+		);
+
+		expect(missingMessageIdentity.status).toBe(400);
+		expect(missingStatusIdentity.status).toBe(400);
+		expect(webhook).not.toHaveBeenCalled();
+	});
+
 	it('uses normal JSON and Hono response behavior', async () => {
 		const raw = {
 			object: 'whatsapp_business_account',
@@ -594,7 +788,7 @@ describe('createWhatsAppChannel()', () => {
 		expect(invalidResponse.status).toBe(500);
 	});
 
-	it('round-trips canonical individual and group conversation keys', () => {
+	it('round-trips collision-safe phone, BSUID, and group conversation keys', () => {
 		const whatsapp = createWhatsAppChannel({
 			appSecret: 'app_secret_keys',
 			verifyToken: 'verify_token_keys',
@@ -602,11 +796,23 @@ describe('createWhatsAppChannel()', () => {
 			phoneNumberId: 'phone number 77',
 			webhook() {},
 		});
-		const individual: WhatsAppConversationRef = {
+		const phone: WhatsAppConversationRef = {
 			type: 'individual',
 			businessAccountId: 'waba:with/slash',
 			phoneNumberId: 'phone number 77',
-			recipientId: '+15557007777',
+			destination: {
+				type: 'phone-number',
+				phoneNumber: 'same:destination/77',
+			},
+		};
+		const userId: WhatsAppConversationRef = {
+			type: 'individual',
+			businessAccountId: 'waba:with/slash',
+			phoneNumberId: 'phone number 77',
+			destination: {
+				type: 'user-id',
+				userId: 'same:destination/77',
+			},
 		};
 		const group: WhatsAppConversationRef = {
 			type: 'group',
@@ -615,18 +821,24 @@ describe('createWhatsAppChannel()', () => {
 			groupId: 'group:west/7',
 		};
 
-		const individualKey = whatsapp.conversationKey(individual);
+		const phoneKey = whatsapp.conversationKey(phone);
+		const userIdKey = whatsapp.conversationKey(userId);
 		const groupKey = whatsapp.conversationKey(group);
 
-		expect(whatsapp.parseConversationKey(individualKey)).toEqual(individual);
+		expect(phoneKey).not.toBe(userIdKey);
+		expect(whatsapp.parseConversationKey(phoneKey)).toEqual(phone);
+		expect(whatsapp.parseConversationKey(userIdKey)).toEqual(userId);
 		expect(whatsapp.parseConversationKey(groupKey)).toEqual(group);
-		expect(() => whatsapp.parseConversationKey(`${individualKey}%2f`)).toThrow(
+		expect(() => whatsapp.parseConversationKey(`${phoneKey}%2f`)).toThrow(
 			InvalidWhatsAppConversationKeyError,
 		);
 		expect(() =>
 			whatsapp.conversationKey({
-				...individual,
-				recipientId: ' spaced ',
+				...userId,
+				destination: {
+					type: 'user-id',
+					userId: ' spaced ',
+				},
 			}),
 		).toThrow(InvalidWhatsAppInputError);
 	});

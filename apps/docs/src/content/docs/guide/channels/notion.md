@@ -214,13 +214,12 @@ fetching, and outbound tools.
 ## Cloudflare Workers
 
 Ordinary API calls through `@notionhq/client@5.22.0` use the injected Fetch and
-work in Cloudflare Workers without `nodejs_compat`. Initialize secrets through
-the project's typed Worker binding convention rather than assuming
-`process.env`, and verify the complete Worker build.
+execute in workerd with Flue's required `nodejs_compat` configuration. Use
+`process.env` or typed Worker bindings according to the project's credential
+convention, and verify the complete Worker build.
 
-The official client's OAuth methods currently use Node `Buffer` to construct
-Basic authentication. OAuth is outside this channel example; ordinary API-call
-compatibility does not imply that the OAuth methods are Worker-native.
+OAuth is outside this channel example. Validate any additional SDK operations
+the application chooses to ship.
 
 Test with original synthetic verification and event bodies. Generate local
 HMAC signatures with Web Crypto, and exercise `Client.pages.retrieve()` through

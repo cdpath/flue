@@ -169,9 +169,9 @@ send replies.
 ## Cloudflare Workers
 
 The official `resend@6.12.4` client and webhook verifier execute in Node and
-workerd without `nodejs_compat`. Cloudflare projects should initialize secrets
-through typed Worker bindings rather than assuming `process.env`, then verify
-their complete Worker build.
+workerd with Flue's required `nodejs_compat` configuration. Cloudflare projects
+may initialize secrets through `process.env` or typed Worker bindings, then
+should verify their complete Worker build.
 
 Test ingress with original synthetic bodies and locally generated Svix-format
 HMAC signatures over the exact bytes. Test the real client against a local

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { Resend } from 'resend';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createResendChannel, type ResendChannel } from '../src/index.ts';
 
 const encoder = new TextEncoder();
@@ -8,13 +8,7 @@ const SECRET_TEXT = 'flue-resend-workerd-secret';
 const WEBHOOK_SECRET = `whsec_${base64(encoder.encode(SECRET_TEXT))}`;
 
 describe('@flue/resend workerd ingress', () => {
-	afterEach(() => {
-		vi.unstubAllGlobals();
-	});
-
 	it('executes the official Resend verifier over exact bytes in workerd', async () => {
-		vi.stubGlobal('process', undefined);
-		vi.stubGlobal('Buffer', undefined);
 		const webhook = vi.fn();
 		const app = channelApp(
 			createResendChannel({
@@ -41,13 +35,11 @@ describe('@flue/resend workerd ingress', () => {
 			},
 			delivery: { id: 'msg_worker_exact' },
 		});
-		expect(globalThis.process).toBeUndefined();
-		expect(globalThis.Buffer).toBeUndefined();
+		expect(globalThis.process).toBeDefined();
+		expect(globalThis.Buffer).toBeDefined();
 	});
 
 	it('normalizes a future verified event in workerd', async () => {
-		vi.stubGlobal('process', undefined);
-		vi.stubGlobal('Buffer', undefined);
 		const webhook = vi.fn();
 		const app = channelApp(
 			createResendChannel({

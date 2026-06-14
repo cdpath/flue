@@ -343,10 +343,11 @@ transport must reject every unexpected host or path and assert the GraphQL
 method, access-token header, API version, variables, and response handling.
 Execute ingress and this client request in Node and workerd.
 
-The verified Fetch client path runs in workerd without `nodejs_compat`. This is
-not a blanket guarantee for the full Shopify SDK or every Admin client
-operation. Cloudflare projects should use typed bindings instead of assuming
-`process.env` and must validate the exact operations they ship.
+The verified Fetch client path runs in workerd with Flue's required
+`nodejs_compat` configuration. This is not a blanket guarantee for the full
+Shopify SDK or every Admin client operation. Cloudflare projects may use
+`process.env` or typed bindings according to their credential convention and
+must validate the exact operations they ship.
 
 Never register a live webhook, mutate a Shopify app, request a real token, or
 contact the Admin API during implementation or testing.

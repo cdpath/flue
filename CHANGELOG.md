@@ -25,6 +25,11 @@
 
 ### Fixes & Other Changes
 
+- The WhatsApp channel now accepts Business-Scoped User ID webhook payloads
+  when Meta omits phone-number fields, preserves BSUID and parent-BSUID
+  metadata, and uses collision-safe phone, BSUID, and group conversation
+  identities. Its editable client example sends BSUID messages through the
+  SDK's authenticated low-level request path.
 - Recovery now resumes shutdown-interrupted turns, settles completed work before budget or timeout checks, repairs partial tool batches without replaying completed tools, and emits durable submission-settlement events for waiters.
 - Cloudflare attempt markers are now Flue-owned rather than querying private Agents SDK tables.
 - `flue logs` treats `--since` as an opaque Durable Streams offset, supports `--format ndjson`, and uses public run metadata.

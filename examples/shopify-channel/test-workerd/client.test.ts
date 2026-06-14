@@ -11,8 +11,6 @@ describe('Shopify Client', () => {
 	});
 
 	it('retrieves the bound order through injected Fetch when executed in workerd', async () => {
-		vi.stubGlobal('process', undefined);
-		vi.stubGlobal('Buffer', undefined);
 		const shopDomain = 'worker-stationer.myshopify.com';
 		const expectedUrl = `https://${shopDomain}/admin/api/${SHOPIFY_ADMIN_API_VERSION}/graphql.json`;
 		const fetcher = vi.fn<typeof globalThis.fetch>(async (url, init) => {
@@ -58,7 +56,7 @@ describe('Shopify Client', () => {
 			displayFinancialStatus: 'AUTHORIZED',
 		});
 		expect(fetcher).toHaveBeenCalledOnce();
-		expect(globalThis.process).toBeUndefined();
-		expect(globalThis.Buffer).toBeUndefined();
+		expect(globalThis.process).toBeDefined();
+		expect(globalThis.Buffer).toBeDefined();
 	});
 });

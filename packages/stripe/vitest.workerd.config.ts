@@ -4,7 +4,10 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
 	plugins: [
 		cloudflareTest({
-			miniflare: { compatibilityDate: '2026-06-01' },
+			miniflare: {
+				compatibilityDate: '2026-06-01',
+				compatibilityFlags: ['nodejs_compat'],
+			},
 		}),
 	],
 	test: {
