@@ -25,10 +25,10 @@ Node and Cloudflare Workers. Add a compatible `@types/node` development
 dependency only when the project needs types for `process` or `Buffer`.
 
 Flue owns exact-body signature verification, required delivery metadata,
-account consistency checks, body limits, the response deadline, and the common
-event envelope. The project owns webhook creation and subscription selection,
-API tokens and OAuth, tenant credential lookup, deduplication, persistence,
-ticket policy, and every outbound tool.
+account consistency checks, body limits, and passing through the
+provider-native common event envelope. The project owns webhook creation and
+subscription selection, API tokens and OAuth, tenant credential lookup,
+deduplication, persistence, ticket policy, and every outbound tool.
 
 ## Create the client
 
@@ -202,27 +202,27 @@ export const channel = createZendeskChannel({
   webhookId: optionalEnv('ZENDESK_WEBHOOK_ID'),
 
   // Path: /channels/zendesk/webhook
-  async webhook({ c, event }) {
-    switch (event.type) {
+  async webhook({ c, payload, delivery }) {
+    switch (payload.type) {
       case 'zen:event-type:ticket.created':
       case 'zen:event-type:ticket.comment_added': {
-        const ticketId = ticketIdFromEvent(event.subject, event.detail);
+        const ticketId = ticketIdFromEvent(payload.subject, payload.detail);
         if (!ticketId) {
           return c.json({ error: 'Expected a Zendesk ticket event.' }, 400);
         }
         const ticket: ZendeskTicketRef = {
-          accountId: event.accountId,
+          accountId: payload.account_id,
           ticketId,
         };
         await dispatch(assistant, {
           id: channel.ticketKey(ticket),
           input: {
-            type: `zendesk.${event.type}`,
-            eventId: event.eventId,
-            invocationId: event.invocationId,
-            occurredAt: event.time,
+            type: `zendesk.${payload.type}`,
+            eventId: payload.id,
+            invocationId: delivery.invocationId,
+            occurredAt: payload.time,
             ticketId,
-            change: event.event,
+            change: payload.event,
           },
         });
         return;
@@ -282,8 +282,12 @@ function optionalEnv(name: string): string | undefined {
 }
 ```
 
-The package keeps event type and schema version open. Validate fields used by
-each selected event family. The example requires matching ticket identity in
+The callback receives the provider-native common event envelope as `payload`
+with Zendesk's own field names (`account_id`, `id`, `type`, `subject`, `time`,
+`zendesk_event_version`, `event`, `detail`), plus unsigned `delivery` metadata
+from the request headers (`webhookId`, `invocationId`, `signatureTimestamp`).
+The package keeps `type` and `zendesk_event_version` open. Validate fields used
+by each selected event family. The example requires matching ticket identity in
 both `subject` and `detail.id`; customize that policy only from Zendesk's
 documented payload for the event types you subscribe to.
 
@@ -367,15 +371,16 @@ restriction for deployments dedicated to one webhook.
 ## Response and delivery behavior
 
 Returning nothing produces an empty `200`. A JSON-compatible value becomes the
-response body. A normal Hono or Fetch `Response` passes through unchanged.
+response body. A normal Hono or Fetch `Response` passes through unchanged. A
+thrown callback or unsupported return value produces `409`, which Zendesk
+retries up to three times.
 
-Zendesk allows 12 seconds for the complete request. The channel's deadline
-defaults to 11 seconds and cannot be configured higher. It includes body
-receipt, signature verification, parsing, identity checks, and the callback.
-A timeout, thrown callback, or unsupported return value produces `409`, which
-Zendesk retries up to three times. If body processing exhausts the deadline,
-the application callback is not started. JavaScript work that already began
-cannot be forcibly cancelled after a timeout, so keep admission short.
+Zendesk allows 12 seconds for the complete request. The channel does not
+enforce a deadline, because racing the application callback against a timer
+cannot actually cancel JavaScript work that has already started — the timed-out
+work keeps running while a misleading failure is returned. Instead, admit
+durable work promptly (for example `dispatch(...)` then return) and rely on
+idempotency rather than blocking on slow operations before acknowledging.
 
 Zendesk retries `409` responses up to three times. It retries `429` and `503`
 when `Retry-After` is less than 60 seconds, and retries timeouts up to five
@@ -417,7 +422,7 @@ those bytes, and base64-encode the digest. Cover:
 - an unsafe numeric `account_id` preserved without rounding;
 - malformed UTF-8 and JSON, media type, and declared and streamed body limits;
 - no-value, JSON, and normal `Response` results;
-- complete-route timeout and canonical ticket-key round trip.
+- a thrown callback failing closed with `409` and canonical ticket-key round trip.
 
 Test the exported client in Node and workerd with injected fail-closed Fetch.
 Assert the exact `*.zendesk.com/api/v2/tickets/{id}.json` URL, `GET` method,

@@ -48,28 +48,28 @@ export const channel = createZendeskChannel({
   webhookId: process.env.ZENDESK_WEBHOOK_ID || undefined,
 
   // Path: /channels/zendesk/webhook
-  async webhook({ c, event }) {
-    switch (event.type) {
+  async webhook({ c, payload, delivery }) {
+    switch (payload.type) {
       case 'zen:event-type:ticket.created':
       case 'zen:event-type:ticket.comment_added': {
-        const ticketId = ticketIdFromEvent(event.subject, event.detail);
+        const ticketId = ticketIdFromEvent(payload.subject, payload.detail);
         if (!ticketId) {
           return c.json({ error: 'Expected a Zendesk ticket event.' }, 400);
         }
 
         const ticket: ZendeskTicketRef = {
-          accountId: event.accountId,
+          accountId: payload.account_id,
           ticketId,
         };
         await dispatch(assistant, {
           id: channel.ticketKey(ticket),
           input: {
-            type: `zendesk.${event.type}`,
-            eventId: event.eventId,
-            invocationId: event.invocationId,
-            occurredAt: event.time,
+            type: `zendesk.${payload.type}`,
+            eventId: payload.id,
+            invocationId: delivery.invocationId,
+            occurredAt: payload.time,
             ticketId,
-            change: event.event,
+            change: payload.event,
           },
         });
         return;
@@ -280,23 +280,32 @@ ids. Treat header metadata as provider routing context rather than independent
 authorization.
 
 Zendesk does not document a timestamp acceptance window or clock-skew rule.
-The channel exposes `signatureTimestamp` but does not invent freshness
+The channel exposes `delivery.signatureTimestamp` but does not invent freshness
 semantics.
 
 ## Event shape
 
-The callback receives `{ c, event }`. The normalized event includes:
+The callback receives `{ c, payload, delivery }`, keeping the Flue-verified
+provider-native payload separate from the unsigned header metadata.
 
-- `accountId`, `webhookId`, and `invocationId`;
-- `signatureTimestamp`;
-- provider `eventId`, `type`, `schemaVersion`, `subject`, and `time`;
-- provider-native `detail` and `event` JSON objects;
-- complete parsed `raw` and exact decoded `rawBody`.
+`payload` is Zendesk's own [common event envelope](https://developer.zendesk.com/api-reference/webhooks/event-types/webhook-event-types/),
+with the provider's snake_case field names:
 
-Type and version remain open strings so verified future event families remain
-observable. JSON is parsed losslessly: unsafe integer literals retain their
-exact decimal spelling as strings. The top-level integer `account_id` is
-normalized to a decimal string.
+- `account_id`, normalized to a positive decimal string;
+- `id`, the provider event id;
+- `type` and `zendesk_event_version`, both open strings;
+- `subject` such as `zen:ticket:<id>`, and `time`;
+- provider-native `detail` and `event` JSON objects.
+
+An index signature forwards any authenticated future or unmodeled fields, so
+verified future event families remain observable. JSON is parsed losslessly:
+unsafe integer literals retain their exact decimal spelling as strings, and the
+top-level integer `account_id` is normalized to a decimal string.
+
+`delivery` is the unsigned routing metadata read from the request headers:
+`webhookId`, `invocationId`, and `signatureTimestamp`. Zendesk's HMAC does not
+cover these headers, so treat them as provider routing context, not
+authorization.
 
 Zendesk's current documentation is inconsistent about ticket delivery setup:
 the event catalog and Support UI documentation list ticket subscriptions,
@@ -315,21 +324,22 @@ separate research.
 ## Responses and delivery
 
 Returning nothing produces an empty `200`. A JSON-compatible value becomes a
-JSON response. A normal Hono or Fetch `Response` passes through unchanged.
+JSON response. A normal Hono or Fetch `Response` passes through unchanged. A
+thrown callback or unsupported return value fails closed with retryable `409`.
 
-Zendesk has a 12-second request timeout. `handlerTimeoutMs` defaults to 11
-seconds and cannot exceed 11 seconds. It covers body receipt, verification,
-parsing, identity checks, and the callback. Timeout, application failure, or an
-unsupported result returns retryable `409`. If body processing exhausts the
-deadline, the callback is not started. Already-started JavaScript work cannot
-be forcibly cancelled.
+Zendesk allows 12 seconds for the complete request. The channel does not enforce
+a deadline, because racing the callback against a timer cannot actually cancel
+JavaScript work that has already started — the timed-out work keeps running while
+a misleading failure is returned. Instead, admit durable work promptly (for
+example `dispatch(...)` then return) and rely on idempotency rather than
+blocking on slow operations before acknowledging.
 
-Zendesk retries `409`, conditionally retries `429` and `503` with a short
-`Retry-After`, and retries timeouts up to five times. Delivery is best effort
-and may be duplicated or omitted. Persist the signed `event.eventId` in
-application-owned storage when duplicate admission is unacceptable. The
-unsigned `event.invocationId` is useful for correlating provider attempts but
-is not a replay-resistant deduplication key. Use an exact `200` for ordinary
+Zendesk retries `409` up to three times, conditionally retries `429` and `503`
+with a short `Retry-After`, and retries timeouts up to five times. Delivery is
+best effort and may be duplicated or omitted. Persist the signed `payload.id` in
+application-owned storage when duplicate admission is unacceptable. The unsigned
+`delivery.invocationId` is useful for correlating provider attempts but is not a
+replay-resistant deduplication key. Use an exact `200` for ordinary
 acknowledgment.
 
 ## Cloudflare Workers

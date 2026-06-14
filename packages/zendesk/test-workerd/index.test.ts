@@ -37,10 +37,14 @@ describe('@flue/zendesk workerd ingress', () => {
 		expect(response.status).toBe(200);
 		expect(changed.status).toBe(401);
 		expect(webhook).toHaveBeenCalledOnce();
-		expect(webhook.mock.calls[0]?.[0].event).toMatchObject({
-			accountId: ACCOUNT_ID,
+		expect(webhook.mock.calls[0]?.[0].delivery).toMatchObject({
 			webhookId: WEBHOOK_ID,
 			invocationId: 'invocation-worker-29',
+		});
+		expect(webhook.mock.calls[0]?.[0].payload).toMatchObject({
+			account_id: ACCOUNT_ID,
+			id: 'event-worker-29',
+			type: 'zen:event-type:ticket.messaging.message_created',
 			detail: { id: '9007199254743001', status: 'pending' },
 			event: {
 				message: {
@@ -48,7 +52,6 @@ describe('@flue/zendesk workerd ingress', () => {
 					body: 'Worker delivery',
 				},
 			},
-			rawBody: body,
 		});
 	});
 

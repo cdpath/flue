@@ -39,14 +39,6 @@ export interface ZendeskChannelOptions<E extends Env = Env> {
 	webhookId?: string;
 	/** Maximum request-body size in bytes. Defaults to 1 MiB. */
 	bodyLimit?: number;
-	/**
-	 * Complete route deadline, including body receipt, verification, parsing,
-	 * and the application callback. Defaults to and may not exceed 11 seconds,
-	 * leaving time before Zendesk's 12-second delivery timeout.
-	 *
-	 * Timed-out work may continue running after the failure response.
-	 */
-	handlerTimeoutMs?: number;
 	/** Receives every verified Zendesk event-subscription delivery. */
 	webhook(input: ZendeskWebhookHandlerInput<E>): ZendeskHandlerResult;
 }
@@ -60,72 +52,78 @@ export interface ZendeskTicketRef {
 }
 
 /**
- * One verified Zendesk webhook event.
+ * Provider-native Zendesk event-subscription payload.
  *
- * Zendesk's event catalog and schema versions remain open, so applications
- * validate the provider-native `detail` and `event` fields they consume.
+ * Field names, nesting, and discriminants match Zendesk's documented common
+ * event envelope. The `account_id` integer is preserved losslessly as a
+ * positive decimal string rather than a rounded JavaScript number; every other
+ * safe numeric literal stays a number and unsafe integers stay decimal strings.
+ *
+ * Zendesk's event catalog and schema versions remain open, so `type`,
+ * `zendesk_event_version`, `detail`, and `event` are deliberately broad.
+ * Applications narrow `detail` and `event` for the event families they consume.
+ *
+ * @see https://developer.zendesk.com/api-reference/webhooks/event-types/webhook-event-types/
  */
-export interface ZendeskWebhookEvent<
+export interface ZendeskEvent<
 	TDetail extends JsonObject = JsonObject,
 	TEvent extends JsonObject = JsonObject,
 > {
 	/**
-	 * Account id from the signed body, matched against provider header metadata.
-	 *
-	 * Zendesk's HMAC does not independently cover the account header.
+	 * Zendesk account id, normalized to a positive decimal string. Checked
+	 * against the `X-Zendesk-Account-Id` header for consistency.
 	 */
-	accountId: string;
-	/**
-	 * Webhook configuration id from provider header metadata.
-	 *
-	 * Zendesk's HMAC does not independently cover this header.
-	 */
+	account_id: string;
+	/** Unique provider event id. Use it as a replay-resistant deduplication key. */
+	id: string;
+	/** Open provider event type, e.g. `zen:event-type:ticket.created`. */
+	type: string;
+	/** Provider resource subject, e.g. `zen:ticket:<id>`. */
+	subject: string;
+	/** Provider event occurrence timestamp. */
+	time: string;
+	/** Open provider schema version, e.g. `2022-06-20`. */
+	zendesk_event_version: string;
+	/** Provider-native change object. Properties vary by event type. */
+	event: TEvent;
+	/** Provider-native resource object. Properties vary by event domain. */
+	detail: TDetail;
+	[key: string]: JsonValue;
+}
+
+/**
+ * Unsigned provider delivery metadata from request headers.
+ *
+ * Zendesk's HMAC covers only the signature timestamp and request body, not
+ * these headers. They are routing and attempt-correlation metadata, never an
+ * authorization capability.
+ */
+export interface ZendeskDelivery {
+	/** Webhook configuration id from `X-Zendesk-Webhook-Id`. */
 	webhookId: string;
 	/**
-	 * Delivery invocation id from provider header metadata for attempt
-	 * correlation.
-	 *
-	 * Zendesk's HMAC does not independently cover this header. Use the signed
-	 * `eventId` rather than this value as a replay-resistant deduplication key.
+	 * Delivery attempt id from `X-Zendesk-Webhook-Invocation-Id`, for correlating
+	 * provider retries. Prefer the signed `payload.id` for deduplication.
 	 */
 	invocationId: string;
-	/** Timestamp string included in Zendesk's signature input. */
+	/** Timestamp string included in the verified signature input. */
 	signatureTimestamp: string;
-	/** Provider event id from the common event envelope. */
-	eventId: string;
-	/** Open provider event type. */
-	type: string;
-	/** Open provider schema version from `zendesk_event_version`. */
-	schemaVersion: string;
-	/** Provider resource subject. */
-	subject: string;
-	/** Provider event time. */
-	time: string;
-	/** Provider-native resource object. Validate fields for the selected event type. */
-	detail: TDetail;
-	/** Provider-native change object. Validate fields for the selected event type. */
-	event: TEvent;
-	/**
-	 * Complete parsed provider envelope. Unsafe numeric literals are strings
-	 * rather than rounded JavaScript numbers.
-	 */
-	raw: JsonObject;
-	/** Exact UTF-8 body after successful signature verification. */
-	rawBody: string;
 }
 
 export interface ZendeskWebhookHandlerInput<E extends Env = Env> {
 	/** Authentic Hono context for the discovered route. */
 	c: Context<E>;
-	/** Verified and normalized Zendesk event. */
-	event: ZendeskWebhookEvent;
+	/** Verified provider-native Zendesk event-subscription payload. */
+	payload: ZendeskEvent;
+	/** Unsigned provider delivery metadata from request headers. */
+	delivery: ZendeskDelivery;
 }
 
 type ZendeskHandlerValue = undefined | JsonValue | Response;
 
 /**
  * Returning no value or JSON acknowledges with `200`. A returned `Response`
- * passes through. Channel-owned failures use retryable `409`.
+ * passes through. A thrown callback fails closed with retryable `409`.
  */
 export type ZendeskHandlerResult = ZendeskHandlerValue | Promise<ZendeskHandlerValue>;
 
@@ -144,6 +142,11 @@ export interface ZendeskChannel<E extends Env = Env> {
  *
  * The route is fixed at `POST /webhook`. The channel is stateless and does not
  * deduplicate, reorder, or apply an undocumented timestamp freshness window.
+ *
+ * Zendesk allows 12 seconds for the complete request and retries `409`
+ * responses up to three times, so admit durable work promptly (for example
+ * `dispatch(...)` then return) and rely on idempotency rather than blocking on
+ * slow work before acknowledging.
  */
 export function createZendeskChannel<E extends Env = Env>(
 	options: ZendeskChannelOptions<E>,

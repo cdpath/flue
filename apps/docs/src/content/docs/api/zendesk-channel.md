@@ -18,9 +18,10 @@ export {
   type JsonValue,
   type ZendeskChannel,
   type ZendeskChannelOptions,
+  type ZendeskDelivery,
+  type ZendeskEvent,
   type ZendeskHandlerResult,
   type ZendeskTicketRef,
-  type ZendeskWebhookEvent,
   type ZendeskWebhookHandlerInput,
 };
 ```
@@ -43,22 +44,20 @@ interface ZendeskChannelOptions<E extends Env = Env> {
   accountId?: string;
   webhookId?: string;
   bodyLimit?: number;
-  handlerTimeoutMs?: number;
   webhook(input: ZendeskWebhookHandlerInput<E>): ZendeskHandlerResult;
 }
 ```
 
-| Field              | Description                                                             |
-| ------------------ | ----------------------------------------------------------------------- |
-| `signingSecret`    | Zendesk webhook signing secret used for exact-body HMAC verification.   |
-| `accountId`        | Optional expected payload and header account id.                        |
-| `webhookId`        | Optional expected `X-Zendesk-Webhook-Id`.                               |
-| `bodyLimit`        | Maximum request-body size in bytes. Defaults to 1 MiB.                  |
-| `handlerTimeoutMs` | Complete route deadline. Defaults to 11000 ms; maximum 11000 ms.        |
-| `webhook`          | Receives every verified, structurally valid event-subscription payload. |
+| Field           | Description                                                              |
+| --------------- | ----------------------------------------------------------------------- |
+| `signingSecret` | Zendesk webhook signing secret used for exact-body HMAC verification.   |
+| `accountId`     | Optional expected payload and header account id.                        |
+| `webhookId`     | Optional expected `X-Zendesk-Webhook-Id`.                               |
+| `bodyLimit`     | Maximum request-body size in bytes. Defaults to 1 MiB.                  |
+| `webhook`       | Receives every verified, structurally valid event-subscription payload. |
 
 Configured secrets and ids must be non-empty. `bodyLimit` must be a positive
-integer. `handlerTimeoutMs` must be a positive integer no greater than 11000.
+integer.
 
 ## Routes
 
@@ -79,57 +78,82 @@ the `flue()` mount.
 ```ts
 interface ZendeskWebhookHandlerInput<E extends Env = Env> {
   c: Context<E>;
-  event: ZendeskWebhookEvent;
+  payload: ZendeskEvent;
+  delivery: ZendeskDelivery;
 }
 ```
 
-`c` is the authentic Hono context. The callback runs only after content type,
-body limit, exact-body signature, UTF-8, JSON envelope, account consistency,
-and optional configured identity checks pass.
+`c` is the authentic Hono context. `payload` is the verified provider-native
+event-subscription envelope; `delivery` is the unsigned routing metadata read
+from the request headers. The callback runs only after content type, body limit,
+exact-body signature, UTF-8, JSON envelope, account consistency, and optional
+configured identity checks pass.
 
-## `ZendeskWebhookEvent`
+## `ZendeskEvent`
+
+The provider-native [common event envelope](https://developer.zendesk.com/api-reference/webhooks/event-types/webhook-event-types/),
+preserving Zendesk's own snake_case field names, nesting, and discriminants.
 
 ```ts
-interface ZendeskWebhookEvent {
-  accountId: string;
-  webhookId: string;
-  invocationId: string;
-  signatureTimestamp: string;
-  eventId: string;
+interface ZendeskEvent<
+  TDetail extends JsonObject = JsonObject,
+  TEvent extends JsonObject = JsonObject,
+> {
+  account_id: string;
+  id: string;
   type: string;
-  schemaVersion: string;
   subject: string;
   time: string;
-  detail: JsonObject;
-  event: JsonObject;
-  raw: JsonObject;
-  rawBody: string;
+  zendesk_event_version: string;
+  event: TEvent;
+  detail: TDetail;
+  [key: string]: JsonValue;
 }
 ```
 
-| Field                | Provider source                         | Meaning                                                |
-| -------------------- | --------------------------------------- | ------------------------------------------------------ |
-| `accountId`          | Body `account_id` and account header    | Normalized Zendesk account identity.                   |
-| `webhookId`          | `X-Zendesk-Webhook-Id`                  | Webhook configuration identity.                        |
-| `invocationId`       | `X-Zendesk-Webhook-Invocation-Id`       | Unsigned provider attempt-correlation identity.        |
-| `signatureTimestamp` | `X-Zendesk-Webhook-Signature-Timestamp` | Exact timestamp included in the HMAC input.            |
-| `eventId`            | Body `id`                               | Provider event identity.                               |
-| `type`               | Body `type`                             | Open provider event type.                              |
-| `schemaVersion`      | Body `zendesk_event_version`            | Open provider event schema version.                    |
-| `subject`            | Body `subject`                          | Provider resource subject such as `zen:ticket:<id>`.   |
-| `time`               | Body `time`                             | Provider event occurrence timestamp.                   |
-| `detail`             | Body `detail`                           | Provider-native resource object.                       |
-| `event`              | Body `event`                            | Provider-native change object.                         |
-| `raw`                | Complete request object                 | Parsed verified envelope.                              |
-| `rawBody`            | Exact request body                      | UTF-8 text decoded only after exact-byte verification. |
+| Field                   | Meaning                                                           |
+| ----------------------- | ----------------------------------------------------------------- |
+| `account_id`            | Zendesk account id, normalized to a positive decimal string.      |
+| `id`                    | Provider event id. Use it as a replay-resistant deduplication key. |
+| `type`                  | Open provider event type, e.g. `zen:event-type:ticket.created`.   |
+| `subject`               | Provider resource subject, e.g. `zen:ticket:<id>`.                |
+| `time`                  | Provider event occurrence timestamp.                              |
+| `zendesk_event_version` | Open provider schema version, e.g. `2022-06-20`.                  |
+| `event`                 | Provider-native change object. Properties vary by event type.     |
+| `detail`                | Provider-native resource object. Properties vary by event domain. |
 
-Types and schema versions remain open strings. Verified future events reach
-the handler. Applications validate fields consumed for each selected type.
+`type` and `zendesk_event_version` remain open strings, and the index signature
+forwards any authenticated future or unmodeled fields. Verified future events
+reach the handler. Narrow `detail` and `event` through the `TDetail`/`TEvent`
+generics for the families you consume, and validate the fields you use.
 
 JSON is parsed with `lossless-json`: safe numeric literals remain numbers,
 while unsafe integer literals retain their exact decimal strings. The required
 integer `account_id` is normalized to a positive decimal string and checked
 against the provider account header.
+
+## `ZendeskDelivery`
+
+Unsigned provider delivery metadata from the request headers. Zendesk's HMAC
+covers only the signature timestamp and request body, not these headers, so they
+are routing and attempt-correlation context, never an authorization capability.
+
+```ts
+interface ZendeskDelivery {
+  webhookId: string;
+  invocationId: string;
+  signatureTimestamp: string;
+}
+```
+
+| Field                | Provider source                         | Meaning                                          |
+| -------------------- | --------------------------------------- | ------------------------------------------------ |
+| `webhookId`          | `X-Zendesk-Webhook-Id`                  | Webhook configuration identity.                  |
+| `invocationId`       | `X-Zendesk-Webhook-Invocation-Id`       | Unsigned provider attempt-correlation identity.  |
+| `signatureTimestamp` | `X-Zendesk-Webhook-Signature-Timestamp` | Exact timestamp included in the HMAC input.      |
+
+Prefer the signed `payload.id` for deduplication; `invocationId` only correlates
+provider retry attempts.
 
 ## Verification
 
@@ -172,12 +196,14 @@ type ZendeskHandlerResult =
 
 Returning nothing produces an empty `200`. A JSON-compatible value becomes a
 JSON response. A normal Hono or Fetch `Response` passes through unchanged. A
-thrown callback, unsupported return value, or route timeout produces an empty
-`409`, which Zendesk retries.
+thrown callback or unsupported return value produces an empty `409`, which
+Zendesk retries specifically.
 
-Zendesk's request timeout is 12 seconds. `handlerTimeoutMs` covers body receipt,
-verification, parsing, identity checks, and application code and is capped at 11000. If body processing exhausts the deadline, application code is not
-started. Already-started work is not cancelled.
+Zendesk allows 12 seconds for the complete request. The channel does not enforce
+a deadline, because racing the callback against a timer cannot actually cancel
+JavaScript work that has already started. Admit durable work promptly (for
+example `dispatch(...)` then return) and rely on idempotency rather than
+blocking on slow work before acknowledging.
 
 ## Ticket identity
 
@@ -205,10 +231,12 @@ request or select account credentials.
 
 ## Delivery and application boundary
 
-Zendesk can duplicate or omit delivery. It retries selected statuses and
-timeouts and can pause failing endpoints through its circuit breaker. Persist
-the signed `eventId` in application-owned storage when duplicate admission is
-unacceptable. `invocationId` is unsigned metadata for attempt correlation.
+Zendesk can duplicate or omit delivery. It retries `409` up to three times,
+conditionally retries `429` and `503` with a short `Retry-After`, retries
+timeouts up to five times, and can pause failing endpoints through its circuit
+breaker. Persist the signed `payload.id` in application-owned storage when
+duplicate admission is unacceptable. `delivery.invocationId` is unsigned metadata
+for attempt correlation.
 
 This package supports provider-defined JSON event subscriptions. Custom
 trigger and automation payloads, Sunshine Conversations, and Zendesk AI Agent

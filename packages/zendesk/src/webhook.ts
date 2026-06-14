@@ -1,9 +1,14 @@
 import type { Env, Handler } from 'hono';
 import { isInteger, isLosslessNumber, isSafeNumber, parse } from 'lossless-json';
-import type { JsonObject, JsonValue, ZendeskChannelOptions, ZendeskWebhookEvent } from './index.ts';
+import type {
+	JsonObject,
+	JsonValue,
+	ZendeskChannelOptions,
+	ZendeskDelivery,
+	ZendeskEvent,
+} from './index.ts';
 
 const DEFAULT_BODY_LIMIT = 1024 * 1024;
-const DEFAULT_HANDLER_TIMEOUT_MS = 11_000;
 const RETRYABLE_FAILURE_STATUS = 409;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -12,64 +17,62 @@ export function createZendeskWebhookHandler<E extends Env>(
 	options: ZendeskChannelOptions<E>,
 ): Handler<E> {
 	const bodyLimit = options.bodyLimit ?? DEFAULT_BODY_LIMIT;
-	const handlerTimeoutMs = options.handlerTimeoutMs ?? DEFAULT_HANDLER_TIMEOUT_MS;
 	if (!Number.isSafeInteger(bodyLimit) || bodyLimit <= 0) {
 		throw new TypeError('Zendesk webhook bodyLimit must be a positive integer.');
 	}
-	if (
-		!Number.isSafeInteger(handlerTimeoutMs) ||
-		handlerTimeoutMs <= 0 ||
-		handlerTimeoutMs > DEFAULT_HANDLER_TIMEOUT_MS
-	) {
-		throw new TypeError('Zendesk webhook handlerTimeoutMs must be between 1 and 11000.');
-	}
 	const key = importSigningKey(options.signingSecret);
 
-	return (c) => {
-		const deadlineAt = Date.now() + handlerTimeoutMs;
-		return runRoute(async () => {
-			const request = c.req.raw;
-			if (!isJsonRequest(request)) return response(415);
+	return async (c) => {
+		const request = c.req.raw;
+		if (!isJsonRequest(request)) return response(415);
 
-			const contentLength = request.headers.get('content-length');
-			if (contentLength !== null && !/^\d+$/.test(contentLength)) return response(400);
-			if (contentLength !== null && Number(contentLength) > bodyLimit) return response(413);
+		const contentLength = request.headers.get('content-length');
+		if (contentLength !== null && !/^\d+$/.test(contentLength)) return response(400);
+		if (contentLength !== null && Number(contentLength) > bodyLimit) return response(413);
 
-			const signature = parseSignature(request.headers.get('x-zendesk-webhook-signature'));
-			if (!signature) return response(401);
+		const signature = parseSignature(request.headers.get('x-zendesk-webhook-signature'));
+		if (!signature) return response(401);
 
-			const metadata = readMetadata(request.headers);
-			if (!metadata) return response(400);
+		const metadata = readMetadata(request.headers);
+		if (!metadata) return response(400);
 
-			const body = await readBody(request, bodyLimit);
-			if (body.type === 'too-large') return response(413);
-			if (body.type === 'invalid') return response(400);
+		const body = await readBody(request, bodyLimit);
+		if (body.type === 'too-large') return response(413);
+		if (body.type === 'invalid') return response(400);
 
-			const signedBytes = concatenate(encoder.encode(metadata.signatureTimestamp), body.value);
-			if (!(await verifySignature(await key, signedBytes, signature))) {
-				return response(401);
-			}
+		const signedBytes = concatenate(encoder.encode(metadata.signatureTimestamp), body.value);
+		if (!(await verifySignature(await key, signedBytes, signature))) {
+			return response(401);
+		}
 
-			let rawBody: string;
-			try {
-				rawBody = decoder.decode(body.value);
-			} catch {
-				return response(400);
-			}
+		let rawBody: string;
+		try {
+			rawBody = decoder.decode(body.value);
+		} catch {
+			return response(400);
+		}
 
-			const normalized = normalizeEvent(rawBody, metadata);
-			if (!normalized) return response(400);
-			if (normalized.accountId !== metadata.accountId) return response(403);
-			if (options.accountId !== undefined && normalized.accountId !== options.accountId) {
-				return response(403);
-			}
-			if (options.webhookId !== undefined && normalized.webhookId !== options.webhookId) {
-				return response(403);
-			}
-			if (Date.now() >= deadlineAt) return response(RETRYABLE_FAILURE_STATUS);
+		const payload = parseEvent(rawBody);
+		if (!payload) return response(400);
+		if (payload.account_id !== metadata.accountId) return response(403);
+		if (options.accountId !== undefined && payload.account_id !== options.accountId) {
+			return response(403);
+		}
+		if (options.webhookId !== undefined && metadata.webhookId !== options.webhookId) {
+			return response(403);
+		}
 
-			return serializeHandlerResult(await options.webhook({ c, event: normalized }));
-		}, handlerTimeoutMs);
+		const delivery: ZendeskDelivery = {
+			webhookId: metadata.webhookId,
+			invocationId: metadata.invocationId,
+			signatureTimestamp: metadata.signatureTimestamp,
+		};
+
+		try {
+			return serializeHandlerResult(await options.webhook({ c, payload, delivery }));
+		} catch {
+			return response(RETRYABLE_FAILURE_STATUS);
+		}
 	};
 }
 
@@ -102,10 +105,13 @@ function readRequiredHeader(headers: Headers, name: string): string | undefined 
 	return value && value.trim() === value ? value : undefined;
 }
 
-function normalizeEvent(
-	rawBody: string,
-	metadata: ZendeskRequestMetadata,
-): ZendeskWebhookEvent | undefined {
+/**
+ * Parses the verified body into Zendesk's provider-native common event
+ * envelope. Field names, nesting, and discriminants are preserved; only the
+ * required integer `account_id` is normalized to a lossless decimal string so
+ * large account ids survive without JavaScript numeric rounding.
+ */
+function parseEvent(rawBody: string): ZendeskEvent | undefined {
 	let parsed: unknown;
 	try {
 		parsed = parse(rawBody);
@@ -115,34 +121,23 @@ function normalizeEvent(
 	if (!isPlainObject(parsed)) return undefined;
 
 	const accountId = normalizeAccountId(parsed.account_id);
-	const raw = normalizeJsonValue(parsed);
-	if (!accountId || !isJsonObject(raw)) return undefined;
-	raw.account_id = accountId;
+	const value = normalizeJsonValue(parsed);
+	if (!accountId || !isJsonObject(value)) return undefined;
+	value.account_id = accountId;
 
-	const eventId = readNonEmptyString(raw, 'id');
-	const type = readNonEmptyString(raw, 'type');
-	const schemaVersion = readNonEmptyString(raw, 'zendesk_event_version');
-	const subject = readNonEmptyString(raw, 'subject');
-	const time = readNonEmptyString(raw, 'time');
-	const detail = readObject(raw, 'detail');
-	const event = readObject(raw, 'event');
-	if (!eventId || !type || !schemaVersion || !subject || !time || !detail || !event) {
+	if (
+		!readNonEmptyString(value, 'id') ||
+		!readNonEmptyString(value, 'type') ||
+		!readNonEmptyString(value, 'zendesk_event_version') ||
+		!readNonEmptyString(value, 'subject') ||
+		!readNonEmptyString(value, 'time') ||
+		!readObject(value, 'detail') ||
+		!readObject(value, 'event')
+	) {
 		return undefined;
 	}
 
-	return {
-		...metadata,
-		accountId,
-		eventId,
-		type,
-		schemaVersion,
-		subject,
-		time,
-		detail,
-		event,
-		raw,
-		rawBody,
-	};
+	return value as ZendeskEvent;
 }
 
 function normalizeAccountId(value: unknown): string | undefined {
@@ -245,39 +240,10 @@ function concatenate(prefix: Uint8Array, body: Uint8Array): Uint8Array {
 	return value;
 }
 
-async function runRoute(route: () => Promise<Response>, timeoutMs: number): Promise<Response> {
-	let timeout: ReturnType<typeof setTimeout> | undefined;
-	const routePromise = Promise.resolve()
-		.then(route)
-		.catch(() => response(RETRYABLE_FAILURE_STATUS));
-	const timeoutPromise = new Promise<Response>((resolve) => {
-		timeout = setTimeout(() => resolve(response(RETRYABLE_FAILURE_STATUS)), timeoutMs);
-	});
-	const outcome = await Promise.race([routePromise, timeoutPromise]);
-	if (timeout !== undefined) clearTimeout(timeout);
-	return outcome;
-}
-
 function serializeHandlerResult(value: unknown): Response {
-	if (value instanceof Response) return value;
 	if (value === undefined) return response(200);
-	if (!isJsonValue(value)) return response(RETRYABLE_FAILURE_STATUS);
+	if (value instanceof Response) return value;
 	return Response.json(value);
-}
-
-function isJsonValue(value: unknown, seen = new Set<object>()): value is JsonValue {
-	if (value === null || typeof value === 'boolean' || typeof value === 'string') return true;
-	if (typeof value === 'number') return Number.isFinite(value);
-	if (typeof value !== 'object' || seen.has(value)) return false;
-	if (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype) return false;
-	seen.add(value);
-	try {
-		return Array.isArray(value)
-			? value.every((item) => isJsonValue(item, seen))
-			: Object.values(value).every((item) => isJsonValue(item, seen));
-	} finally {
-		seen.delete(value);
-	}
 }
 
 function isJsonRequest(request: Request): boolean {

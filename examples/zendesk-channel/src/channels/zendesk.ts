@@ -17,28 +17,28 @@ export const channel = createZendeskChannel({
 	webhookId: optionalEnv('ZENDESK_WEBHOOK_ID'),
 
 	// Path: /channels/zendesk/webhook
-	async webhook({ c, event }) {
-		switch (event.type) {
+	async webhook({ c, payload, delivery }) {
+		switch (payload.type) {
 			case 'zen:event-type:ticket.created':
 			case 'zen:event-type:ticket.comment_added': {
-				const ticketId = ticketIdFromEvent(event.subject, event.detail);
+				const ticketId = ticketIdFromEvent(payload.subject, payload.detail);
 				if (!ticketId) {
 					return c.json({ error: 'Expected a Zendesk ticket event.' }, 400);
 				}
 
 				const ticket: ZendeskTicketRef = {
-					accountId: event.accountId,
+					accountId: payload.account_id,
 					ticketId,
 				};
 				await dispatch(assistant, {
 					id: channel.ticketKey(ticket),
 					input: {
-						type: `zendesk.${event.type}`,
-						eventId: event.eventId,
-						invocationId: event.invocationId,
-						occurredAt: event.time,
+						type: `zendesk.${payload.type}`,
+						eventId: payload.id,
+						invocationId: delivery.invocationId,
+						occurredAt: payload.time,
 						ticketId,
-						change: event.event,
+						change: payload.event,
 					},
 				});
 				return;

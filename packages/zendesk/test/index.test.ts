@@ -38,14 +38,16 @@ describe('createZendeskChannel()', () => {
 		expect(webhook).toHaveBeenCalledOnce();
 		expect(webhook.mock.calls[0]?.[0]).toMatchObject({
 			c: expect.any(Object),
-			event: {
-				accountId: ACCOUNT_ID,
+			delivery: {
 				webhookId: WEBHOOK_ID,
 				invocationId: 'invocation-node-17',
 				signatureTimestamp: TIMESTAMP,
-				eventId: 'event-node-17',
+			},
+			payload: {
+				account_id: ACCOUNT_ID,
+				id: 'event-node-17',
 				type: 'zen:event-type:ticket.status_changed',
-				schemaVersion: '2026-05-01',
+				zendesk_event_version: '2026-05-01',
 				subject: 'zen:ticket:9007199254741997',
 				time: '2026-06-13T23:52:16.741Z',
 				detail: {
@@ -61,10 +63,6 @@ describe('createZendeskChannel()', () => {
 						position: 2,
 					},
 				},
-				raw: {
-					account_id: ACCOUNT_ID,
-				},
-				rawBody: body,
 			},
 		});
 	});
@@ -107,8 +105,8 @@ describe('createZendeskChannel()', () => {
 
 		expect(
 			webhook.mock.calls.map(([input]) => ({
-				type: input.event.type,
-				version: input.event.schemaVersion,
+				type: input.payload.type,
+				version: input.payload.zendesk_event_version,
 			})),
 		).toEqual([
 			{ type: 'zen:event-type:user.created', version: '2026-05-01' },
@@ -172,7 +170,7 @@ describe('createZendeskChannel()', () => {
 		const response = await app.request(jsonRequest(body, await signedHeaders(body, { timestamp })));
 
 		expect(response.status).toBe(200);
-		expect(webhook.mock.calls[0]?.[0].event.signatureTimestamp).toBe(timestamp);
+		expect(webhook.mock.calls[0]?.[0].delivery.signatureTimestamp).toBe(timestamp);
 	});
 
 	it('rejects the request when delivery identity headers or account binding are invalid', async () => {
@@ -347,7 +345,11 @@ describe('createZendeskChannel()', () => {
 		expect(webhook).not.toHaveBeenCalled();
 	});
 
-	it('serializes supported results when handlers complete and fails closed otherwise', async () => {
+	it('serializes supported results and maps a non-serializable return or a throw to retryable 409', async () => {
+		// undefined -> 200, JSON -> Response.json, Response -> pass-through. A
+		// non-serializable return (BigInt makes Response.json throw) and a thrown
+		// handler both fall through the wrapping try/catch to a retryable 409,
+		// which Zendesk retries; there is no JSON-shape validator before that.
 		const outcomes: Array<undefined | object | Response | bigint | Error> = [
 			undefined,
 			{ received: true },
@@ -387,48 +389,6 @@ describe('createZendeskChannel()', () => {
 		await expect(responses[1]?.json()).resolves.toEqual({ received: true });
 		await expect(responses[2]?.text()).resolves.toBe('queued');
 		expect(responses[2]?.headers.get('x-zendesk-result')).toBe('custom');
-	});
-
-	it('does not invoke the handler when body receipt exhausts the route deadline', async () => {
-		const webhook = vi.fn();
-		const app = channelApp(
-			createZendeskChannel({
-				signingSecret: SIGNING_SECRET,
-				handlerTimeoutMs: 60,
-				webhook,
-			}),
-		);
-		const body = zendeskEvent({ id: 'event-timeout' });
-
-		const response = await app.request(
-			delayedStreamingRequest(body, await signedHeaders(body), 80),
-		);
-
-		expect(response.status).toBe(409);
-		await new Promise((resolve) => setTimeout(resolve, 40));
-		expect(webhook).not.toHaveBeenCalled();
-	});
-
-	it('returns a retryable failure when an invoked handler exceeds the route deadline', async () => {
-		const webhook = vi.fn(
-			() =>
-				new Promise<undefined>((resolve) => {
-					setTimeout(() => resolve(undefined), 80);
-				}),
-		);
-		const app = channelApp(
-			createZendeskChannel({
-				signingSecret: SIGNING_SECRET,
-				handlerTimeoutMs: 60,
-				webhook,
-			}),
-		);
-		const body = zendeskEvent({ id: 'event-handler-timeout' });
-
-		const response = await app.request(jsonRequest(body, await signedHeaders(body)));
-
-		expect(response.status).toBe(409);
-		expect(webhook).toHaveBeenCalledOnce();
 	});
 
 	it('round trips account-scoped ticket identity when the key is canonical', () => {
@@ -497,13 +457,6 @@ describe('createZendeskChannel()', () => {
 		expect(() =>
 			createZendeskChannel({
 				signingSecret: SIGNING_SECRET,
-				handlerTimeoutMs: 11_001,
-				webhook() {},
-			}),
-		).toThrow(TypeError);
-		expect(() =>
-			createZendeskChannel({
-				signingSecret: SIGNING_SECRET,
 				webhook: undefined as never,
 			}),
 		).toThrow(TypeError);
@@ -552,28 +505,6 @@ function streamingRequest(body: string, headers: Record<string, string>): Reques
 			controller.enqueue(bytes.slice(0, 128));
 			controller.enqueue(bytes.slice(128));
 			controller.close();
-		},
-	});
-	return new Request('https://example.test/webhook', {
-		method: 'POST',
-		headers: { 'content-type': 'application/json', ...headers },
-		body: stream,
-		duplex: 'half',
-	} as RequestInit);
-}
-
-function delayedStreamingRequest(
-	body: string,
-	headers: Record<string, string>,
-	delayMs: number,
-): Request {
-	const bytes = encoder.encode(body);
-	const stream = new ReadableStream<Uint8Array>({
-		start(controller) {
-			setTimeout(() => {
-				controller.enqueue(bytes);
-				controller.close();
-			}, delayMs);
 		},
 	});
 	return new Request('https://example.test/webhook', {
