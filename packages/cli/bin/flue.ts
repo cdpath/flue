@@ -19,7 +19,7 @@ import {
 import { resolveConfigCandidates } from '../src/lib/config-paths.ts';
 import { DEFAULT_DEV_PORT, dev } from '../src/lib/dev.ts';
 import { createEnvLoader, type EnvLoader, selectEnvFile } from '../src/lib/env.ts';
-import { brand, error as cliError, dim, note, row, success } from '../src/lib/terminal.ts';
+import { brand, brandRows, error as cliError, dim, note, row, success } from '../src/lib/terminal.ts';
 import { BLUEPRINTS, KIND_ROOTS } from './_blueprints.generated.ts';
 
 interface ApplicationConfigArgs {
@@ -1091,9 +1091,10 @@ function waitForLocalReady(
 function formatLocalError(message: LocalCliMessage): string {
 	const error = message.error;
 	if (!error) return 'Unknown local execution error.';
-	const lines = [`[${error.type ?? 'unknown'}] ${error.message ?? 'Unknown error'}`];
-	if (error.details) lines.push(error.details);
-	if (error.dev) lines.push(error.dev);
+	const messageText = error.message ?? 'Unknown error';
+	const lines = [`[${error.type ?? 'unknown'}] ${messageText}`];
+	if (error.details && error.details !== messageText) lines.push(error.details);
+	if (error.dev && error.dev !== messageText && error.dev !== error.details) lines.push(error.dev);
 	return lines.join('\n');
 }
 
@@ -1318,6 +1319,11 @@ function superviseDevCommand(args: DevArgs) {
 	startSession(false);
 }
 
+function displayPath(root: string, filePath: string): string {
+	const relative = path.relative(root, filePath);
+	return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? relative : filePath;
+}
+
 async function buildLocalTarget(
 	args: Pick<
 		RunArgs | ConnectArgs,
@@ -1325,7 +1331,8 @@ async function buildLocalTarget(
 	>,
 ) {
 	const { cfg, configPath, envLoader } = await resolveApplicationCommand(args);
-	if (cfg.target === 'cloudflare') return { cfg, serverPath: undefined };
+	const envFile = fs.existsSync(envLoader.file) ? envLoader.file : undefined;
+	if (cfg.target === 'cloudflare') return { cfg, configPath, envFile, serverPath: undefined };
 	try {
 		await build({
 			root: cfg.root,
@@ -1334,13 +1341,13 @@ async function buildLocalTarget(
 			target: cfg.target,
 			log: 'silent',
 			configFile: configPath,
-			envFile: fs.existsSync(envLoader.file) ? envLoader.file : undefined,
+			envFile,
 		});
 	} catch (err) {
 		cliError(`Build failed: ${err instanceof Error ? err.message : String(err)}`);
 		process.exit(1);
 	}
-	return { cfg, serverPath: path.join(cfg.output, 'server.mjs') };
+	return { cfg, configPath, envFile, serverPath: path.join(cfg.output, 'server.mjs') };
 }
 
 async function run(args: RunArgs) {
@@ -1348,7 +1355,12 @@ async function run(args: RunArgs) {
 	if (built.cfg.target === 'cloudflare') printCloudflareRunUnsupported(args.workflow, args.payload);
 	if (!built.serverPath)
 		throw new Error('[flue] Node local workflow build did not produce an executable artifact.');
-	console.error(brand(['flue run', `workflow ${args.workflow}`, 'starting...']));
+	brandRows('flue run', [
+		['workflow', args.workflow],
+		['target', built.cfg.target],
+		['config', built.configPath ? displayPath(built.cfg.root, built.configPath) : undefined],
+		['env', built.envFile ? displayPath(built.cfg.root, built.envFile) : undefined],
+	]);
 	const child = startLocalProcess(
 		built.serverPath,
 		'workflow',
@@ -1368,7 +1380,10 @@ async function run(args: RunArgs) {
 				requestId: `req_${crypto.randomUUID()}`,
 				payload: JSON.parse(args.payload),
 			},
-			(message) => row('run', message.runId),
+			(message) => {
+				row('run', message.runId);
+				console.error('');
+			},
 		);
 		if (result !== undefined && result !== null) console.log(JSON.stringify(result, null, 2));
 		success('workflow completed');
