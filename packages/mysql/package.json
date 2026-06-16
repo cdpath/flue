@@ -1,6 +1,6 @@
 {
 	"name": "@flue/mysql",
-	"version": "0.11.1",
+	"version": "1.0.0-beta.1",
 	"type": "module",
 	"license": "Apache-2.0",
 	"homepage": "https://flueframework.com/",
@@ -18,10 +18,11 @@
 	"main": "./dist/index.mjs",
 	"types": "./dist/index.d.mts",
 	"files": [
-		"dist"
+		"dist",
+		"docs"
 	],
 	"engines": {
-		"node": ">=22.18.0"
+		"node": ">=22.19.0"
 	},
 	"scripts": {
 		"build": "tsdown",

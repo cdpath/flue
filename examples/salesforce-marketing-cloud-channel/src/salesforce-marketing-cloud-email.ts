@@ -1,4 +1,4 @@
-import type { SalesforceMarketingCloudEvent } from '@flue/salesforce-marketing-cloud';
+import type { SalesforceMarketingCloudEvent } from '@flue/salesforce';
 
 const EMAIL_EVENT_INSTANCE_PREFIX = 'salesforce-marketing-cloud-email:';
 

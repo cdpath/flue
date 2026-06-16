@@ -10,7 +10,7 @@
 	},
 	"dependencies": {
 		"@flue/runtime": "workspace:*",
-		"@flue/salesforce-marketing-cloud": "workspace:*"
+		"@flue/salesforce": "workspace:*"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "0.16.15",

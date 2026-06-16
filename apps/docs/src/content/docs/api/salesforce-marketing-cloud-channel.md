@@ -1,9 +1,9 @@
 ---
 title: Salesforce Marketing Cloud Channel API
-description: Reference for Marketing Cloud Engagement ENS ingress from @flue/salesforce-marketing-cloud.
+description: Reference for Marketing Cloud Engagement ENS ingress from @flue/salesforce.
 ---
 
-Import from `@flue/salesforce-marketing-cloud`.
+Import from `@flue/salesforce`.
 
 ## Exports
 
@@ -238,7 +238,7 @@ refresh, subscription lifecycle, tenant selection, outbound clients,
 deduplication, persistence, and agent routing policy remain application
 concerns.
 
-`@flue/salesforce-marketing-cloud` depends only on Hono and standards-based Web
+`@flue/salesforce` depends only on Hono and standards-based Web
 Crypto. The verification path executes in Node and workerd.
 
 See

@@ -1,6 +1,6 @@
 {
 	"name": "@flue/runtime",
-	"version": "0.11.1",
+	"version": "1.0.0-beta.1",
 	"type": "module",
 	"license": "Apache-2.0",
 	"homepage": "https://flueframework.com/",
@@ -55,7 +55,7 @@
 		"types"
 	],
 	"engines": {
-		"node": ">=22.18.0"
+		"node": ">=22.19.0"
 	},
 	"scripts": {
 		"build": "tsdown",
@@ -64,8 +64,8 @@
 		"test:watch": "vitest"
 	},
 	"dependencies": {
-		"@earendil-works/pi-agent-core": "^0.79.0",
-		"@earendil-works/pi-ai": "^0.79.3",
+		"@earendil-works/pi-agent-core": "^0.79.4",
+		"@earendil-works/pi-ai": "^0.79.4",
 		"@hono/node-server": "^2.0.3",
 		"@hono/standard-validator": "^0.2.0",
 		"@modelcontextprotocol/sdk": "^1.29.0",

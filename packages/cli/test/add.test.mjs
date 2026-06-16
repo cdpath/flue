@@ -288,7 +288,7 @@ describe('flue add', () => {
 		const result = await runCli(['add', 'channel', 'salesforce-marketing-cloud', '--print']);
 
 		assert.equal(result.code, 0);
-		assert.ok(result.stdout.includes('@flue/salesforce-marketing-cloud'));
+		assert.ok(result.stdout.includes('@flue/salesforce'));
 		assert.ok(result.stdout.includes('/channels/salesforce-marketing-cloud/events'));
 		assert.ok(result.stdout.includes('x-sfmc-ens-signature'));
 		assert.ok(result.stdout.includes('.rest.marketingcloudapis.com'));

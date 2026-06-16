@@ -15,6 +15,8 @@ minimumReleaseAge: 1440
 resolutionMode: highest
 minimumReleaseAgeExclude:
   - '@ai-sdk/*'
+  - '@earendil-works/pi-ai'
+  - '@earendil-works/pi-agent-core'
   - '@aws-sdk/*'
   - '@smithy/*'
   - ai

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-beta.1 - 2026-06-16
 
 ### Breaking Changes
 
@@ -24,7 +24,7 @@
 - `FlueFs.writeFile()` now guarantees parent directory creation in every sandbox mode; `ShellOptions.timeoutMs` is available for shell operations.
 - OpenTelemetry spans and attributes now align with GenAI semconv.
 - Added `@flue/react` with `FlueProvider`, `useFlueAgent()`, and `useFlueWorkflow()` for live agent transcripts and workflow-run observation. Agent messages use an AI SDK v5-compatible parts shape without a runtime dependency on `ai`.
-- Added first-party `@flue/stripe`, `@flue/notion`, `@flue/resend`, `@flue/shopify`, `@flue/intercom`, `@flue/zendesk`, `@flue/salesforce-marketing-cloud`, `@flue/teams`, `@flue/google-chat`, `@flue/linear`, `@flue/telegram`, `@flue/whatsapp`, `@flue/twilio`, and `@flue/messenger` packages for verified HTTP ingress, constructor-owned typed handlers, canonical provider identity where available, and discovered `channels/<name>.ts` routing. Existing `@flue/github`, `@flue/slack`, and `@flue/discord` packages were rewritten and expanded around the same channel contract. Named `flue add` blueprints create editable project code using provider SDK or Fetch clients and application-owned tools.
+- Added first-party `@flue/stripe`, `@flue/notion`, `@flue/resend`, `@flue/shopify`, `@flue/intercom`, `@flue/zendesk`, `@flue/salesforce`, `@flue/teams`, `@flue/google-chat`, `@flue/linear`, `@flue/telegram`, `@flue/whatsapp`, `@flue/twilio`, and `@flue/messenger` packages for verified HTTP ingress, constructor-owned typed handlers, canonical provider identity where available, and discovered `channels/<name>.ts` routing. Existing `@flue/github`, `@flue/slack`, and `@flue/discord` packages were rewritten and expanded around the same channel contract. Named `flue add` blueprints create editable project code using provider SDK or Fetch clients and application-owned tools.
 - `flue add <kind> <name|url>` now serves categorized channel, database, and sandbox blueprints. `flue update <kind> <name|url>` returns the same current guide with versioned primary-file markers and cumulative upgrade instructions so coding agents can update generated integrations while preserving application customizations.
 - Added driver-free `@flue/mysql`, `@flue/redis`, and `@flue/mongodb` persistence adapters with durable sessions, submissions, workflow runs, event streams, and image chunks. New database blueprints and ecosystem guides cover MySQL, Supabase, Redis, Valkey, and MongoDB.
 - Durable event-stream reads accept `tail=N` to start from the beginning while reading at most the latest N events. Direct agent prompt receipts and their emitted events now expose a `submissionId` for reliable correlation.
@@ -43,6 +43,7 @@
 - Cloudflare attempt markers are now Flue-owned rather than querying private Agents SDK tables.
 - `flue logs` treats `--since` as an opaque Durable Streams offset, supports `--format ndjson`, and uses public run metadata.
 - Many bug fixes landed across Node and Cloudflare execution, SDK stream iteration, CLI shutdown and reload, Workers AI streaming, sandbox filesystem behavior, skill parsing, docs, and test coverage.
+- Updated `@earendil-works/pi-ai` and `@earendil-works/pi-agent-core` to 0.79.4, and aligned the documented Node.js minimum with their `>=22.19.0` requirement.
 - Skills can now be imported from npm and workspace packages through Vite resolution; package-manager symlinks are supported, and packaged skill identity is derived from deployed content.
 - Added a same-origin React chat example with agent conversation and workflow log views.
 

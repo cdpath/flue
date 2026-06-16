@@ -2,7 +2,7 @@ import { defineTool, dispatch } from '@flue/runtime';
 import {
 	createSalesforceMarketingCloudChannel,
 	type SalesforceMarketingCloudEvent,
-} from '@flue/salesforce-marketing-cloud';
+} from '@flue/salesforce';
 import assistant from '../agents/assistant.ts';
 import {
 	createSalesforceMarketingCloudClient,

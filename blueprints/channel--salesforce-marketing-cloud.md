@@ -20,7 +20,7 @@ then `<root>/`. Inspect existing agents, environment types, secret
 conventions, Marketing Cloud tenant configuration, and the ENS event families
 the application subscribes to.
 
-Install `@flue/salesforce-marketing-cloud`. Do not install
+Install `@flue/salesforce`. Do not install
 `@salesforce/core`: ingress and the narrow REST operation in this blueprint use
 standard Fetch and Web Crypto in Node and Cloudflare Workers.
 
@@ -193,7 +193,7 @@ access, the selected event families, and dispatched input to the project:
 import {
   createSalesforceMarketingCloudChannel,
   type SalesforceMarketingCloudEvent,
-} from '@flue/salesforce-marketing-cloud';
+} from '@flue/salesforce';
 import { defineTool, dispatch } from '@flue/runtime';
 import assistant from '../agents/assistant.ts';
 import { createSalesforceMarketingCloudClient } from '../salesforce-marketing-cloud-client.ts';
