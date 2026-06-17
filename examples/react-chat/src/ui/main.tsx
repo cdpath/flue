@@ -12,14 +12,31 @@ import './styles.css';
 
 const client = createFlueClient({ baseUrl: '/api' });
 
+interface ResearchResult {
+	query: string;
+	sources: { n: number; title: string; url: string }[];
+	report: string;
+}
+
+function isResearchResult(value: unknown): value is ResearchResult {
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		'report' in value &&
+		typeof (value as ResearchResult).report === 'string'
+	);
+}
+
 function App() {
 	const [input, setInput] = useState('');
+	const [topic, setTopic] = useState('');
 	const [instanceId] = useState(() => crypto.randomUUID());
 	const [runId, setRunId] = useState<string>();
 	const [actionError, setActionError] = useState<string>();
 	const agent = useFlueAgent({ name: 'assistant', id: instanceId });
 	const workflow = useFlueWorkflow({ runId });
 	const flue = useFlueClient();
+	const research = isResearchResult(workflow.result) ? workflow.result : undefined;
 
 	async function submit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
@@ -41,6 +58,19 @@ function App() {
 			const result = await flue.workflows.invoke('demo', {
 				payload: { requestedAt: new Date().toISOString() },
 			});
+			setRunId(result.runId);
+		} catch (error) {
+			setActionError(error instanceof Error ? error.message : String(error));
+		}
+	}
+
+	async function runResearch(event: FormEvent<HTMLFormElement>) {
+		event.preventDefault();
+		const query = topic.trim();
+		if (!query) return;
+		setActionError(undefined);
+		try {
+			const result = await flue.workflows.invoke('research', { payload: { query } });
 			setRunId(result.runId);
 		} catch (error) {
 			setActionError(error instanceof Error ? error.message : String(error));
@@ -90,6 +120,18 @@ function App() {
 				<button onClick={triggerWorkflow} type="button">
 					Trigger demo workflow
 				</button>
+				<form onSubmit={runResearch}>
+					<input
+						aria-label="Research topic"
+						autoComplete="off"
+						onChange={(event) => setTopic(event.target.value)}
+						placeholder="Research a topic on the web"
+						value={topic}
+					/>
+					<button disabled={!topic.trim()} type="submit">
+						Run research
+					</button>
+				</form>
 				<div className="logs" aria-live="polite">
 					{workflow.logs.length === 0 && <p className="empty">Workflow logs appear here.</p>}
 					{workflow.logs.map((log) => (
@@ -99,6 +141,21 @@ function App() {
 						</div>
 					))}
 				</div>
+				{research && (
+					<div className="report">
+						<h3>Research briefing</h3>
+						<pre>{research.report}</pre>
+						<ol>
+							{research.sources.map((source) => (
+								<li key={source.n}>
+									<a href={source.url} rel="noreferrer" target="_blank">
+										{source.title}
+									</a>
+								</li>
+							))}
+						</ol>
+					</div>
+				)}
 			</section>
 			{(actionError || agent.error) && (
 				<p className="error">{actionError ?? agent.error?.message}</p>

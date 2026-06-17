@@ -46,7 +46,11 @@ export class HttpClient {
 
 	constructor(options: HttpClientOptions) {
 		this.baseUrl = resolveBaseUrl(options.baseUrl).replace(/\/+$/, '');
-		this.fetchImpl = options.fetch ?? fetch;
+		// Bind the default global `fetch` to the global object: it's stored as an
+		// instance field and called as `this.fetchImpl(...)`, and browsers throw
+		// "Illegal invocation" when the global fetch is invoked with any receiver
+		// other than the global object. A caller-supplied fetch is used as given.
+		this.fetchImpl = options.fetch ?? fetch.bind(globalThis);
 		this.headers = options.headers;
 		this.token = options.token;
 	}

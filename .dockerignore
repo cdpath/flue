@@ -1,0 +1,23 @@
+# VCS
+.git
+.github
+
+# Dependencies (installed fresh inside the image)
+**/node_modules
+
+# Build outputs (rebuilt inside the image)
+**/dist
+**/.turbo
+**/.astro
+
+# Agent / editor tooling
+.agents
+.opencode
+.flue
+
+# Misc
+**/*.log
+**/.DS_Store
+Dockerfile
+docker-compose.yml
+.dockerignore

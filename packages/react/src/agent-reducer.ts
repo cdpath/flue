@@ -183,7 +183,14 @@ function reduceMessageBoundary(
 		optimistic ?? existing,
 	);
 	let messages = replaceById(state.messages, id, message);
-	if (local) messages = messages.filter((item) => item.id !== local.localId);
+	// Retire the optimistic user bubble only when its canonical user echo
+	// arrives — never on the assistant boundary. The server streams no
+	// user-role message for HTTP prompts, so dropping the optimistic bubble
+	// on the assistant's `message_start` would erase the user's turn the
+	// instant the reply begins.
+	if (local && event.message.role === 'user') {
+		messages = messages.filter((item) => item.id !== local.localId);
+	}
 	const ownAssistant =
 		event.message.role === 'assistant' &&
 		event.submissionId !== undefined &&

@@ -1,0 +1,24 @@
+services:
+  agents:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: flue-react-chat
+    container_name: flue-react-chat
+    restart: unless-stopped
+    # Run with an init so SIGTERM reaches Node and in-flight streams shut down
+    # gracefully (Node was not designed to run as PID 1).
+    init: true
+    # Model transport (base URL + API key) is injected at runtime from .env
+    # (gitignored) rather than baked into the image. The agent uses model
+    # anthropic/glm-5.2 via the Anthropic-compatible GLM gateway.
+    env_file:
+      - .env
+    environment:
+      PORT: "8080"
+      NODE_ENV: production
+    # Bind to a free loopback port — 8080 is already taken by multica-backend.
+    # The service is reachable via the host's `tailscale serve` proxy, not on
+    # the LAN or public interfaces.
+    ports:
+      - "127.0.0.1:8090:8080"

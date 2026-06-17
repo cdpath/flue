@@ -121,6 +121,23 @@ section {
 form {
 	display: flex;
 	gap: 0.75rem;
+	margin-top: 0.75rem;
+}
+.report {
+	margin-top: 1rem;
+	padding: 1rem;
+	border-radius: 0.75rem;
+	background: #f5f7f5;
+}
+.report h3 {
+	margin-top: 0;
+}
+.report pre {
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+.report a {
+	color: #176b45;
 }
 input {
 	flex: 1;

@@ -1,26 +1,13 @@
-import { fauxAssistantMessage, fauxText, registerFauxProvider } from '@earendil-works/pi-ai';
-import { createAgent } from '@flue/runtime';
+import { type AgentRouteHandler, createAgent } from '@flue/runtime';
 
-export default createAgent(() => {
-	const faux = registerFauxProvider({
-		api: 'react-chat-example',
-		provider: 'react-chat-example',
-		models: [{ id: 'assistant' }],
-	});
-	faux.setResponses([
-		(context) => {
-			const input = context.messages.at(-1);
-			const text =
-				input?.role === 'user'
-					? typeof input.content === 'string'
-						? input.content
-						: input.content.map((block) => (block.type === 'text' ? block.text : '')).join('')
-					: '';
-			return fauxAssistantMessage(fauxText(`You said: ${text}`));
-		},
-	]);
-	return {
-		model: 'react-chat-example/assistant',
-		instructions: 'Reply briefly and helpfully.',
-	};
-});
+// Opt the agent into the HTTP transport so the React UI can reach it at
+// POST /api/agents/assistant/:id. A bare createAgent default export is
+// dispatch-only; exporting a (pass-through) route is what flips on http.
+export const route: AgentRouteHandler = async (_c, next) => next();
+
+// Model id comes from ~/.claude/settings.json (ANTHROPIC_DEFAULT_SONNET_MODEL = glm-5.2).
+// Transport (base URL + API key) is configured on the `anthropic` provider in app.ts.
+export default createAgent(() => ({
+	model: process.env.FLUE_MODEL ?? 'anthropic/glm-5.2',
+	instructions: 'You are a helpful assistant. Reply clearly and concisely.',
+}));
