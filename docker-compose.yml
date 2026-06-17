@@ -9,16 +9,46 @@ services:
     # Run with an init so SIGTERM reaches Node and in-flight streams shut down
     # gracefully (Node was not designed to run as PID 1).
     init: true
-    # Model transport (base URL + API key) is injected at runtime from .env
-    # (gitignored) rather than baked into the image. The agent uses model
-    # anthropic/glm-5.2 via the Anthropic-compatible GLM gateway.
+    # Model transport (base URL + API key), Firecrawl, and the datapro MCP plan
+    # key are injected at runtime from .env (gitignored) rather than baked into
+    # the image. The agents use model anthropic/glm-5.2 via the GLM gateway.
     env_file:
       - .env
     environment:
       PORT: "8080"
       NODE_ENV: production
+      # Durable persistence: db.ts wires @flue/postgres at this URL, so
+      # conversation history survives restarts and the History panel can replay
+      # past sessions. Host is the compose service name on the default network.
+      DATABASE_URL: "postgres://flue:flue@postgres:5432/flue"
+    # Wait for Postgres to accept connections — the server runs migrate() at
+    # boot and exits if the database is unreachable.
+    depends_on:
+      postgres:
+        condition: service_healthy
     # Bind to a free loopback port — 8080 is already taken by multica-backend.
     # The service is reachable via the host's `tailscale serve` proxy, not on
     # the LAN or public interfaces.
     ports:
       - "127.0.0.1:8090:8080"
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: flue-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: flue
+      POSTGRES_PASSWORD: flue
+      POSTGRES_DB: flue
+    # Durable storage on a named volume; not published to the host — only the
+    # agents container reaches it over the compose network.
+    volumes:
+      - flue-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flue -d flue"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  flue-pgdata:

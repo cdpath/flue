@@ -10,11 +10,13 @@
 	},
 	"dependencies": {
 		"@earendil-works/pi-ai": "^0.79.4",
+		"@flue/postgres": "workspace:*",
 		"@flue/react": "workspace:*",
 		"@flue/runtime": "workspace:*",
 		"@flue/sdk": "workspace:*",
 		"@hono/node-server": "^2.0.3",
 		"hono": "4.12.22",
+		"postgres": "^3.4.9",
 		"react": "^19.1.1",
 		"react-dom": "^19.2.6"
 	},

@@ -2235,6 +2235,22 @@ export class Session implements FlueSession, AgentSubmissionSession {
 						this.rebuildHarnessContext();
 						await this.save();
 						inputEntry = options.findInput();
+						// Surface the user's input as an observable message the first
+						// time it is persisted, so the user's own turn joins the
+						// durable event stream and replays on reconnect/reload. The
+						// agent loop only emits assistant/tool messages — submission
+						// input is never echoed — so without this the rendered
+						// transcript omits user turns. Gated on first-persist so
+						// retries/replays (where inputEntry already exists) don't
+						// duplicate it; emit() is purely observable and has no effect
+						// on conversation state, the journal, or the model context.
+						if (inputEntry?.message.role === 'user') {
+							this.emit({
+								type: 'message_end',
+								message: inputEntry.message,
+								turnId: this.activeTurnId ?? generateTurnId(),
+							});
+						}
 					}
 					if (!inputEntry) {
 						throw new OperationFailedError({
